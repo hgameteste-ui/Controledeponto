@@ -1,5 +1,6 @@
 package com.example.controledeponto
 
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.os.Bundle
@@ -19,7 +20,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val viewModel: WorkViewModel by viewModels()
-    private val historyAdapter = HistoryAdapter()
+    private lateinit var historyAdapter: HistoryAdapter
     
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -33,6 +34,9 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupObservers()
         setupListeners()
+        
+        // Exibe a versão atualizada automaticamente do build.gradle
+        binding.tvVersion.text = "v${BuildConfig.VERSION_NAME}"
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -49,15 +53,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
+        historyAdapter = HistoryAdapter { workDay ->
+            viewModel.setDate(workDay.date)
+        }
         binding.rvHistory.adapter = historyAdapter
         binding.rvHistory.layoutManager = LinearLayoutManager(this)
     }
 
     private fun setupObservers() {
-        viewModel.todayWorkDay.observe(this) { workDay ->
-            val today = LocalDate.now()
-            binding.tvDate.text = workDay?.date?.format(dateFormatter) ?: today.format(dateFormatter)
-            
+        viewModel.selectedDate.observe(this) { date ->
+            binding.tvDate.text = date.format(dateFormatter)
+            // Destacar se for hoje ou um dia diferente
+            if (date == LocalDate.now()) {
+                binding.tvDate.setTextColor(resources.getColor(R.color.purple_500, theme))
+            } else {
+                binding.tvDate.setTextColor(resources.getColor(android.R.color.holo_orange_dark, theme))
+            }
+        }
+
+        viewModel.selectedWorkDay.observe(this) { workDay ->
             binding.tvClockIn.text = "Entrada: ${workDay?.clockIn?.format(timeFormatter) ?: "--:--"}"
             binding.tvBreakStart.text = "Início Intervalo: ${workDay?.breakStart?.format(timeFormatter) ?: "--:--"}"
             binding.tvBreakEnd.text = "Fim Intervalo: ${workDay?.breakEnd?.format(timeFormatter) ?: "--:--"}"
@@ -69,13 +83,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.allWorkDays.observe(this) { list ->
-            val today = LocalDate.now()
-            historyAdapter.submitList(list.filter { it.date != today })
+            // Filtra o dia que está sendo editado para não aparecer no histórico abaixo
+            val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
+            historyAdapter.submitList(list.filter { it.date != selectedDate })
         }
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
-        val current = workDay ?: WorkDay(LocalDate.now())
+        val date = viewModel.selectedDate.value ?: LocalDate.now()
+        val current = workDay ?: WorkDay(date)
         
         binding.tvClockIn.setOnClickListener { showTimePicker(current.clockIn) { viewModel.updateWorkDay(current.copy(clockIn = it)) } }
         binding.tvBreakStart.setOnClickListener { showTimePicker(current.breakStart) { viewModel.updateWorkDay(current.copy(breakStart = it)) } }
@@ -88,6 +104,13 @@ class MainActivity : AppCompatActivity() {
         TimePickerDialog(this, { _, hour, minute ->
             onTimeSelected(LocalTime.of(hour, minute))
         }, time.hour, time.minute, true).show()
+    }
+
+    private fun showDatePicker() {
+        val date = viewModel.selectedDate.value ?: LocalDate.now()
+        DatePickerDialog(this, { _, year, month, dayOfMonth ->
+            viewModel.setDate(LocalDate.of(year, month + 1, dayOfMonth))
+        }, date.year, date.monthValue - 1, date.dayOfMonth).show()
     }
 
     private fun updateStats(workDay: WorkDay?) {
@@ -121,13 +144,16 @@ class MainActivity : AppCompatActivity() {
 
         // 2. Tempo Trabalhado
         var totalMinutes = 0L
+        val isToday = viewModel.selectedDate.value == LocalDate.now()
         val now = LocalTime.now()
 
-        val end1 = breakStart ?: if (clockOut == null) now else clockIn
-        totalMinutes += Duration.between(clockIn, end1).toMinutes()
+        // Período 1: Entrada até Início de Intervalo (ou Agora/Saída)
+        val end1 = breakStart ?: (if (isToday) clockOut ?: now else clockOut ?: clockIn)
+        totalMinutes += Duration.between(clockIn, end1).toMinutes().coerceAtLeast(0)
 
+        // Período 2: Fim de Intervalo até Saída (ou Agora)
         if (breakEnd != null) {
-            val end2 = clockOut ?: now
+            val end2 = clockOut ?: (if (isToday) now else breakEnd)
             if (end2.isAfter(breakEnd)) {
                 totalMinutes += Duration.between(breakEnd, end2).toMinutes()
             }
@@ -157,6 +183,10 @@ class MainActivity : AppCompatActivity() {
     private fun setupListeners() {
         binding.btnPunch.setOnClickListener {
             viewModel.punchClock()
+        }
+
+        binding.tvDate.setOnClickListener {
+            showDatePicker()
         }
     }
 }

@@ -19,7 +19,20 @@
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorPrimary"
             app:title="Meu Ponto"
-            app:titleTextColor="@color/white" />
+            app:titleTextColor="@color/white">
+
+            <TextView
+                android:id="@+id/tvVersion"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="16dp"
+                android:alpha="0.8"
+                android:textColor="@color/white"
+                android:textSize="12sp"
+                tools:text="v1.1.1" />
+
+        </com.google.android.material.appbar.MaterialToolbar>
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -141,17 +154,19 @@
                     android:textColor="#00695C"
                     android:textSize="16sp"
                     android:textStyle="bold" />
+
             </com.google.android.material.card.MaterialCardView>
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnPunch"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="24dp"
                 android:padding="16dp"
                 android:text="Registrar Ponto"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
+                app:icon="@drawable/ic_fingerprint"
+                app:iconGravity="textStart"
+                app:iconPadding="8dp"
                 app:layout_constraintTop_toBottomOf="@id/cardPrediction" />
 
             <TextView
@@ -182,9 +197,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:nestedScrollingEnabled="false"
-                app:layout_constraintTop_toBottomOf="@id/tvHistoryTitle"
                 app:layout_constraintBottom_toBottomOf="parent"
-                tools:listitem="@layout/item_history" />
+                app:layout_constraintTop_toBottomOf="@id/tvHistoryTitle" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.core.widget.NestedScrollView>

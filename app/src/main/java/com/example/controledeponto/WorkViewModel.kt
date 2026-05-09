@@ -7,28 +7,34 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 class WorkViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository: WorkRepository
-    val todayWorkDay: LiveData<WorkDay?>
-    val allWorkDays: LiveData<List<WorkDay>>
+    private val repository: WorkRepository = WorkRepository(
+        AppDatabase.getDatabase(application).workDayDao()
+    )
+    
+    private val _selectedDate = MutableLiveData(LocalDate.now())
+    val selectedDate: LiveData<LocalDate> = _selectedDate
 
-    init {
-        val workDayDao = AppDatabase.getDatabase(application).workDayDao()
-        repository = WorkRepository(workDayDao)
-        todayWorkDay = repository.getWorkDay(LocalDate.now())
-        allWorkDays = repository.allWorkDays
+    val selectedWorkDay: LiveData<WorkDay?> = _selectedDate.switchMap { date ->
+        repository.getWorkDay(date)
+    }
+
+    val allWorkDays: LiveData<List<WorkDay>> = repository.allWorkDays
+
+    fun setDate(date: LocalDate) {
+        _selectedDate.value = date
     }
 
     fun punchClock() = viewModelScope.launch {
-        val today = LocalDate.now()
+        val date = _selectedDate.value ?: LocalDate.now()
         val now = LocalTime.now()
-        val current = repository.getWorkDaySync(today) ?: WorkDay(today)
+        val current = repository.getWorkDaySync(date) ?: WorkDay(date)
 
         val updated = when {
             current.clockIn == null -> current.copy(clockIn = now)
             current.breakStart == null -> current.copy(breakStart = now)
             current.breakEnd == null -> current.copy(breakEnd = now)
             current.clockOut == null -> current.copy(clockOut = now)
-            else -> current // Already finished for today
+            else -> current // Already finished
         }
 
         repository.insert(updated)

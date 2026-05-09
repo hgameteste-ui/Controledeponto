@@ -9,7 +9,7 @@ import com.example.controledeponto.databinding.ItemHistoryBinding
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 
-class HistoryAdapter : ListAdapter<WorkDay, HistoryAdapter.ViewHolder>(DiffCallback) {
+class HistoryAdapter(private val onItemClicked: (WorkDay) -> Unit) : ListAdapter<WorkDay, HistoryAdapter.ViewHolder>(DiffCallback) {
 
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -20,7 +20,9 @@ class HistoryAdapter : ListAdapter<WorkDay, HistoryAdapter.ViewHolder>(DiffCallb
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        val item = getItem(position)
+        holder.bind(item)
+        holder.itemView.setOnClickListener { onItemClicked(item) }
     }
 
     inner class ViewHolder(private val binding: ItemHistoryBinding) : RecyclerView.ViewHolder(binding.root) {
