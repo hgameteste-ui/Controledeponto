@@ -21,16 +21,33 @@
             app:title="Meu Ponto"
             app:titleTextColor="@color/white">
 
-            <TextView
-                android:id="@+id/tvVersion"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="end|center_vertical"
                 android:layout_marginEnd="16dp"
-                android:alpha="0.8"
-                android:textColor="@color/white"
-                android:textSize="12sp"
-                tools:text="v1.1.1" />
+                android:gravity="end"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvMonthlyTotal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    tools:text="Mês: 160h 00m" />
+
+                <TextView
+                    android:id="@+id/tvVersion"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:alpha="0.7"
+                    android:textColor="@color/white"
+                    android:textSize="10sp"
+                    tools:text="v1.3.0" />
+
+            </LinearLayout>
 
         </com.google.android.material.appbar.MaterialToolbar>
 

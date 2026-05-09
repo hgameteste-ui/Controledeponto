@@ -20,6 +20,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     val allWorkDays: LiveData<List<WorkDay>> = repository.allWorkDays
 
+    val monthlyTotalMinutes: LiveData<Long> = allWorkDays.map { list ->
+        val now = LocalDate.now()
+        list.filter { it.date.month == now.month && it.date.year == now.year }
+            .sumOf { it.calculateTotalMinutes(isToday = it.date == now) }
+    }
+
     fun setDate(date: LocalDate) {
         _selectedDate.value = date
     }

@@ -87,6 +87,13 @@ class MainActivity : AppCompatActivity() {
             val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
             historyAdapter.submitList(list.filter { it.date != selectedDate })
         }
+
+        // Observa o total acumulado do mês e atualiza no topo a direita
+        viewModel.monthlyTotalMinutes.observe(this) { totalMinutes ->
+            val hours = totalMinutes / 60
+            val mins = totalMinutes % 60
+            binding.tvMonthlyTotal.text = String.format("Mês: %02dh %02dm", hours, mins)
+        }
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
@@ -127,37 +134,19 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val clockIn = workDay.clockIn
-        val breakStart = workDay.breakStart
-        val breakEnd = workDay.breakEnd
-        val clockOut = workDay.clockOut
-
         // 1. Previsão Dinâmica
         val prediction = when {
-            breakStart != null && breakEnd != null -> {
-                val breakDur = Duration.between(breakStart, breakEnd)
-                clockIn.plusHours(workHours).plus(breakDur)
+            workDay.breakStart != null && workDay.breakEnd != null -> {
+                val breakDur = Duration.between(workDay.breakStart, workDay.breakEnd)
+                workDay.clockIn.plusHours(workHours).plus(breakDur)
             }
-            else -> clockIn.plusHours(workHours + breakHours) 
+            else -> workDay.clockIn.plusHours(workHours + breakHours) 
         }
         binding.tvPrediction.text = "Previsão de Saída: ${prediction.format(timeFormatter)}"
 
-        // 2. Tempo Trabalhado
-        var totalMinutes = 0L
+        // 2. Tempo Trabalhado (Usa a lógica centralizada no WorkDay)
         val isToday = viewModel.selectedDate.value == LocalDate.now()
-        val now = LocalTime.now()
-
-        // Período 1: Entrada até Início de Intervalo (ou Agora/Saída)
-        val end1 = breakStart ?: (if (isToday) clockOut ?: now else clockOut ?: clockIn)
-        totalMinutes += Duration.between(clockIn, end1).toMinutes().coerceAtLeast(0)
-
-        // Período 2: Fim de Intervalo até Saída (ou Agora)
-        if (breakEnd != null) {
-            val end2 = clockOut ?: (if (isToday) now else breakEnd)
-            if (end2.isAfter(breakEnd)) {
-                totalMinutes += Duration.between(breakEnd, end2).toMinutes()
-            }
-        }
+        val totalMinutes = workDay.calculateTotalMinutes(isToday)
 
         val hours = totalMinutes / 60
         val mins = totalMinutes % 60

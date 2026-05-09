@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.controledeponto"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "1.2.7"
+        versionCode = 21
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
