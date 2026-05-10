@@ -123,6 +123,14 @@ class MainActivity : AppCompatActivity() {
             historyAdapter.submitList(list.filter { it.date != selectedDate })
         }
 
+        // Observa apenas o total excedente (horas extras) para o totalizador do topo
+        viewModel.monthlyOvertimeMinutes.observe(this) { overtimeMinutes ->
+            val hours = overtimeMinutes / 60
+            val mins = overtimeMinutes % 60
+            binding.tvToolbarMonthlyTotal.text = String.format("%02dh %02dm", hours, mins)
+        }
+
+        // Observa o total trabalhado para o card de progresso mensal
         viewModel.monthlyTotalMinutes.observe(this) { totalMinutes ->
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
@@ -132,7 +140,6 @@ class MainActivity : AppCompatActivity() {
             val mins = totalMinutes % 60
             val timeStr = String.format("%02dh %02dm", hours, mins)
             
-            binding.tvToolbarMonthlyTotal.text = timeStr
             binding.tvMonthlyTotal.text = timeStr
             binding.progressMonthly.max = goalMinutes.toInt()
             binding.progressMonthly.progress = totalMinutes.toInt().coerceAtMost(goalMinutes.toInt())

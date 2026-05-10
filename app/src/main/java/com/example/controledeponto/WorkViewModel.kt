@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.*
+import androidx.preference.PreferenceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -31,11 +32,30 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         addSource(_selectedDate) { date -> value = calculateTotal(allWorkDays.value, date) }
     }
 
+    val monthlyOvertimeMinutes: LiveData<Long> = MediatorLiveData<Long>().apply {
+        addSource(allWorkDays) { list -> value = calculateOvertime(list, _selectedDate.value) }
+        addSource(_selectedDate) { date -> value = calculateOvertime(allWorkDays.value, date) }
+    }
+
     private fun calculateTotal(list: List<WorkDay>?, selectedDate: LocalDate?): Long {
         if (list == null || selectedDate == null) return 0L
         val now = LocalDate.now()
         return list.filter { it.date.month == selectedDate.month && it.date.year == selectedDate.year }
             .sumOf { it.calculateTotalMinutes(isToday = it.date == now) }
+    }
+
+    private fun calculateOvertime(list: List<WorkDay>?, selectedDate: LocalDate?): Long {
+        if (list == null || selectedDate == null) return 0L
+        val now = LocalDate.now()
+        val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
+        val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L
+        val dailyGoalMinutes = workHours * 60
+
+        return list.filter { it.date.month == selectedDate.month && it.date.year == selectedDate.year }
+            .sumOf { 
+                val worked = it.calculateTotalMinutes(isToday = it.date == now)
+                (worked - dailyGoalMinutes).coerceAtLeast(0)
+            }
     }
 
     private val _importStatus = MutableLiveData<String?>()
