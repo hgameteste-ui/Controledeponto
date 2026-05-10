@@ -255,5 +255,15 @@ class MainActivity : AppCompatActivity() {
         binding.tvDate.setOnClickListener {
             showDatePicker()
         }
+
+        binding.btnPreviousDay.setOnClickListener {
+            val currentDate = viewModel.selectedDate.value ?: LocalDate.now()
+            viewModel.setDate(currentDate.minusDays(1))
+        }
+
+        binding.btnNextDay.setOnClickListener {
+            val currentDate = viewModel.selectedDate.value ?: LocalDate.now()
+            viewModel.setDate(currentDate.plusDays(1))
+        }
     }
 }

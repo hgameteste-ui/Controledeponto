@@ -124,17 +124,46 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <TextView
-                android:id="@+id/tvDate"
+            <LinearLayout
+                android:id="@+id/layoutDate"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:textSize="20sp"
-                android:textStyle="bold"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/cardMonthly"
-                tools:text="10/10/2023" />
+                app:layout_constraintTop_toBottomOf="@id/cardMonthly">
+
+                <ImageButton
+                    android:id="@+id/btnPreviousDay"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Dia anterior"
+                    android:src="@drawable/ic_chevron_left"
+                    app:tint="?attr/colorPrimary" />
+
+                <TextView
+                    android:id="@+id/tvDate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    tools:text="10/10/2023" />
+
+                <ImageButton
+                    android:id="@+id/btnNextDay"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Próximo dia"
+                    android:src="@drawable/ic_chevron_right"
+                    app:tint="?attr/colorPrimary" />
+
+            </LinearLayout>
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardStatus"
@@ -143,7 +172,7 @@
                 android:layout_marginTop="16dp"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
-                app:layout_constraintTop_toBottomOf="@id/tvDate">
+                app:layout_constraintTop_toBottomOf="@id/layoutDate">
 
                 <LinearLayout
                     android:layout_width="match_parent"
