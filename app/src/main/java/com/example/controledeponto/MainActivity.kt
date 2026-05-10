@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
             binding.progressMonthly.max = goalMinutes.toInt()
             binding.progressMonthly.progress = totalMinutes.toInt().coerceAtMost(goalMinutes.toInt())
 
-            val remainingMinutes = goalMinutes - totalMinutes
+            val remainingMinutes = (goalMinutes - totalMinutes).coerceAtLeast(0)
             if (remainingMinutes > 0) {
                 binding.tvMonthlyRemaining.text = String.format(Locale.getDefault(), "Faltam %dh %02dm para a meta de %dh", remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours)
             } else {
@@ -163,25 +163,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateToolbarSummary() {
+        val totalMinutes = viewModel.monthlyTotalMinutes.value ?: 0L
         val overtimeMinutes = viewModel.monthlyOvertimeMinutes.value ?: 0L
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
         val goalMinutes = monthlyGoalHours * 60L
 
-        val overtimeHours = overtimeMinutes / 60
-        val overtimeMins = overtimeMinutes % 60
-        val overtimeStr = String.format(Locale.getDefault(), "%02dh %02dm", overtimeHours, overtimeMins)
+        // Saldo líquido (Banco de horas acumulado no mês)
+        val absOvertime = Math.abs(overtimeMinutes)
+        val overtimeHours = absOvertime / 60
+        val overtimeMins = absOvertime % 60
+        val sign = if (overtimeMinutes >= 0) "+" else "-"
+        val overtimeStr = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, overtimeHours, overtimeMins)
         
-        // Percentual alcançado baseado em: Horas Extras / Meta do Mês
+        // Percentual total da meta mensal alcançado (Total Trabalhado / Meta 160h)
         val percentage = if (goalMinutes > 0) {
-            (overtimeMinutes.toDouble() / goalMinutes * 100).toInt()
+            (totalMinutes.toDouble() / goalMinutes * 100).toInt()
         } else 0
 
-        val totalMinutes = viewModel.monthlyTotalMinutes.value ?: 0L
+        // Horas que faltam para atingir a meta mensal (ex: 160h)
         val remainingMinutes = (goalMinutes - totalMinutes).coerceAtLeast(0)
         val remainingStr = String.format(Locale.getDefault(), "%02dh %02dm", remainingMinutes / 60, remainingMinutes % 60)
 
-        binding.tvToolbarMonthlyTotal.text = "Extras: $overtimeStr | Falta: $remainingStr | Alcançado: $percentage%"
+        // Exibição amigável no topo
+        binding.tvToolbarMonthlyTotal.text = "Saldo: $overtimeStr | Restante: $remainingStr | Meta: $percentage%"
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {

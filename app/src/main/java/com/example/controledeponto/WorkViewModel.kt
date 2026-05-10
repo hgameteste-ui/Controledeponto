@@ -51,11 +51,15 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L
         val dailyGoalMinutes = workHours * 60
 
-        return list.filter { it.date.month == selectedDate.month && it.date.year == selectedDate.year }
-            .sumOf { 
-                val worked = it.calculateTotalMinutes(isToday = it.date == now)
-                (worked - dailyGoalMinutes).coerceAtLeast(0)
-            }
+        // Filtra apenas dias do mês selecionado que já tiveram algum registro
+        return list.filter { 
+            it.date.month == selectedDate.month && 
+            it.date.year == selectedDate.year &&
+            it.clockIn != null 
+        }.sumOf { 
+            val worked = it.calculateTotalMinutes(isToday = it.date == now)
+            worked - dailyGoalMinutes
+        }
     }
 
     private val _importStatus = MutableLiveData<String?>()
@@ -88,8 +92,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     fun importCsv(uri: Uri) = viewModelScope.launch {
         _importStatus.postValue("Importando registros...")
         var count = 0
-        val errorLines = mutableListOf<String>()
-
         try {
             withContext(Dispatchers.IO) {
                 val context = getApplication<Application>()
@@ -106,15 +108,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                     val line = rawLine.trim().replace("\uFEFF", "")
                     if (index == 0 || line.isBlank()) return@forEachIndexed 
                     
-                    // Separador ponto e vírgula conforme seu exemplo
                     val parts = line.split(";").map { it.trim().removeSurrounding("\"").trim() }
                     
                     if (parts.size >= 2) {
                         try {
-                            // Limpa a data: "qua., 01/04/26" -> extrai "01/04/26"
                             val rawDate = parts[0]
                             val dateStr = if (rawDate.contains(",")) rawDate.split(",")[1].trim() else rawDate
-                            
                             val date = LocalDate.parse(dateStr, dateFormatter)
                             
                             fun parseTime(s: String?): LocalTime? {
@@ -123,7 +122,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                             }
 
                             val clockIn = parseTime(parts.getOrNull(1))
-                            // Só importa se houver pelo menos entrada
                             if (clockIn != null) {
                                 val workDay = WorkDay(
                                     date = date,
@@ -136,15 +134,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                                 count++
                             }
                         } catch (e: Exception) {
-                            if (errorLines.size < 3) errorLines.add("Linha ${index + 1}: ${e.localizedMessage}")
+                            Log.e("WorkViewModel", "Erro na linha $index: ${e.message}")
                         }
                     }
                 }
             }
-            
-            _importStatus.postValue(if (count > 0) "Sucesso! $count registros de Abril importados." 
-                                   else "Erro: Nenhum dado válido encontrado. Verifique o formato do arquivo.")
-            
+            _importStatus.postValue(if (count > 0) "Sucesso! $count registros importados." else "Nenhum dado válido encontrado.")
         } catch (e: Exception) {
             _importStatus.postValue("Falha ao abrir arquivo: ${e.localizedMessage}")
         }
@@ -166,7 +161,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
                 list.forEach { 
                     val workedMinutes = it.calculateTotalMinutes(isToday = it.date == LocalDate.now())
-                    val workedStr = String.format("%02dh %02dm", workedMinutes / 60, workedMinutes % 60)
+                    val workedStr = String.format(Locale.getDefault(), "%02dh %02dm", workedMinutes / 60, workedMinutes % 60)
                     
                     builder.append("${it.date.format(dateFormatter)};")
                     builder.append("${it.clockIn?.format(timeFormatter) ?: ""};")
