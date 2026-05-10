@@ -105,6 +105,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 binding.tvDate.setTextColor(resources.getColor(android.R.color.holo_orange_dark, theme))
             }
+            updateToolbarSummary()
         }
 
         viewModel.selectedWorkDay.observe(this) { workDay ->
@@ -123,6 +124,8 @@ class MainActivity : AppCompatActivity() {
             historyAdapter.submitList(list.filter { it.date != selectedDate })
         }
 
+        viewModel.monthlyOvertimeMinutes.observe(this) { updateToolbarSummary() }
+
         // Observa o total trabalhado para atualizar tanto o card quanto o topo
         viewModel.monthlyTotalMinutes.observe(this) { totalMinutes ->
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -133,30 +136,19 @@ class MainActivity : AppCompatActivity() {
             val mins = totalMinutes % 60
             val workedStr = String.format("%02dh %02dm", hours, mins)
             
-            // Texto no topo: Total trabalhado | Quanto falta ou sobrou
-            val remainingMinutes = goalMinutes - totalMinutes
-            val toolbarText = if (remainingMinutes > 0) {
-                val remHours = remainingMinutes / 60
-                val remMins = remainingMinutes % 60
-                String.format("Total: %s | Falta: %dh %02dm", workedStr, remHours, remMins)
-            } else {
-                val extraMinutes = -remainingMinutes
-                val extHours = extraMinutes / 60
-                val extMins = extraMinutes % 60
-                String.format("Total: %s | Extra: %dh %02dm", workedStr, extHours, extMins)
-            }
-            binding.tvToolbarMonthlyTotal.text = toolbarText
-
             // Atualiza o card de progresso mensal
             binding.tvMonthlyTotal.text = workedStr
             binding.progressMonthly.max = goalMinutes.toInt()
             binding.progressMonthly.progress = totalMinutes.toInt().coerceAtMost(goalMinutes.toInt())
 
+            val remainingMinutes = goalMinutes - totalMinutes
             if (remainingMinutes > 0) {
                 binding.tvMonthlyRemaining.text = String.format("Faltam %dh %02dm para a meta de %dh", remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours)
             } else {
                 binding.tvMonthlyRemaining.text = "Meta mensal batida! 🎉"
             }
+            
+            updateToolbarSummary()
         }
 
         // Observa o status da importação para mostrar erros ou sucesso em uma janela
@@ -169,6 +161,25 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
         }
+    }
+
+    private fun updateToolbarSummary() {
+        val totalMinutes = viewModel.monthlyTotalMinutes.value ?: 0L
+        val overtimeMinutes = viewModel.monthlyOvertimeMinutes.value ?: 0L
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
+        val goalMinutes = monthlyGoalHours * 60L
+
+        val overtimeHours = overtimeMinutes / 60
+        val overtimeMins = overtimeMinutes % 60
+        val overtimeStr = String.format("%02dh %02dm", overtimeHours, overtimeMins)
+        
+        val percentage = if (goalMinutes > 0) {
+            (totalMinutes.toDouble() / goalMinutes * 100).toInt()
+        } else 0
+
+        // Atualiza conforme solicitado: Total de horas extras e percentual da meta alcançado
+        binding.tvToolbarMonthlyTotal.text = "Extras: $overtimeStr | Alcançado: $percentage%"
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
