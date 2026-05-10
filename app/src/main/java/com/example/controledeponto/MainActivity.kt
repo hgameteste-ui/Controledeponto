@@ -15,7 +15,6 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.controledeponto.databinding.ActivityMainBinding
 import java.time.Duration
 import java.time.LocalDate
@@ -26,7 +25,6 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val viewModel: WorkViewModel by viewModels()
-    private lateinit var historyAdapter: HistoryAdapter
     
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -53,7 +51,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
-        setupRecyclerView()
         setupObservers()
         setupListeners()
         
@@ -77,6 +74,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_history -> {
+                startActivity(Intent(this, HistoryActivity::class.java))
+                true
+            }
             R.id.action_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
@@ -87,14 +88,6 @@ class MainActivity : AppCompatActivity() {
             }
             else -> super.onOptionsItemSelected(item)
         }
-    }
-
-    private fun setupRecyclerView() {
-        historyAdapter = HistoryAdapter { workDay ->
-            viewModel.setDate(workDay.date)
-        }
-        binding.rvHistory.adapter = historyAdapter
-        binding.rvHistory.layoutManager = LinearLayoutManager(this)
     }
 
     private fun setupObservers() {
@@ -117,11 +110,6 @@ class MainActivity : AppCompatActivity() {
             updateStats(workDay)
             updateButtonUI(workDay)
             setupManualEdits(workDay)
-        }
-
-        viewModel.allWorkDays.observe(this) { list ->
-            val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
-            historyAdapter.submitList(list.filter { it.date != selectedDate })
         }
 
         viewModel.monthlyOvertimeMinutes.observe(this) { updateToolbarSummary() }
@@ -178,7 +166,6 @@ class MainActivity : AppCompatActivity() {
             (totalMinutes.toDouble() / goalMinutes * 100).toInt()
         } else 0
 
-        // Atualiza conforme solicitado: Total de horas extras e percentual da meta alcançado
         binding.tvToolbarMonthlyTotal.text = "Extras: $overtimeStr | Alcançado: $percentage%"
     }
 

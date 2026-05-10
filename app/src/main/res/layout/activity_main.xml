@@ -31,7 +31,7 @@
                 android:alpha="0.7"
                 android:textColor="@color/white"
                 android:textSize="10sp"
-                tools:text="v1.6.1" />
+                tools:text="v1.6.6" />
 
         </com.google.android.material.appbar.MaterialToolbar>
 
@@ -46,7 +46,7 @@
             android:textColor="#E1BEE7"
             android:textSize="13sp"
             android:textStyle="bold"
-            tools:text="Total: 00h 00m | Falta: 160h 00m" />
+            tools:text="Extras: 00h 00m | Alcançado: 0%" />
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -296,26 +296,6 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@id/btnPunch" />
-
-            <TextView
-                android:id="@+id/tvHistoryTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
-                android:text="Histórico"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/tvTarget" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvHistory"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:nestedScrollingEnabled="false"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/tvHistoryTitle" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.core.widget.NestedScrollView>
