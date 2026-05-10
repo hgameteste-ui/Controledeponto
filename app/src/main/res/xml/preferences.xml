@@ -5,7 +5,7 @@
 
         <EditTextPreference
             app:key="work_hours"
-            app:title="Horas de Trabalho"
+            app:title="Horas de Trabalho Diária"
             app:summary="Defina a jornada diária (ex: 8)"
             app:defaultValue="8"
             app:useSimpleSummaryProvider="true" />
@@ -15,6 +15,13 @@
             app:title="Horas de Intervalo"
             app:summary="Defina o tempo de pausa (ex: 2)"
             app:defaultValue="2"
+            app:useSimpleSummaryProvider="true" />
+
+        <EditTextPreference
+            app:key="monthly_goal"
+            app:title="Meta Mensal de Horas"
+            app:summary="Defina quantas horas pretende trabalhar no mês (ex: 160)"
+            app:defaultValue="160"
             app:useSimpleSummaryProvider="true" />
 
     </PreferenceCategory>

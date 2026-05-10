@@ -6,7 +6,6 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.controledeponto.databinding.ItemHistoryBinding
-import java.time.Duration
 import java.time.format.DateTimeFormatter
 
 class HistoryAdapter(private val onItemClicked: (WorkDay) -> Unit) : ListAdapter<WorkDay, HistoryAdapter.ViewHolder>(DiffCallback) {
@@ -28,23 +27,13 @@ class HistoryAdapter(private val onItemClicked: (WorkDay) -> Unit) : ListAdapter
     inner class ViewHolder(private val binding: ItemHistoryBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: WorkDay) {
             binding.tvHistoryDate.text = item.date.format(dateFormatter)
-            binding.tvHistoryTimes.text = "Entrada: ${item.clockIn?.format(timeFormatter) ?: "--"} | Saída: ${item.clockOut?.format(timeFormatter) ?: "--"}"
+            binding.tvHistoryTimes.text = "E: ${item.clockIn?.format(timeFormatter) ?: "--"} | S: ${item.clockOut?.format(timeFormatter) ?: "--"}"
             
-            val totalMinutes = calculateMinutes(item)
+            // Usa a função de cálculo centralizada do WorkDay
+            val totalMinutes = item.calculateTotalMinutes(isToday = false)
             val hours = totalMinutes / 60
             val minutes = totalMinutes % 60
-            binding.tvHistoryTotal.text = String.format("Total: %02dh %02dm", hours, minutes)
-        }
-
-        private fun calculateMinutes(item: WorkDay): Long {
-            var total = 0L
-            if (item.clockIn != null && item.breakStart != null) {
-                total += Duration.between(item.clockIn, item.breakStart).toMinutes()
-            }
-            if (item.breakEnd != null && item.clockOut != null) {
-                total += Duration.between(item.breakEnd, item.clockOut).toMinutes()
-            }
-            return total
+            binding.tvHistoryTotal.text = String.format("%02dh %02dm", hours, minutes)
         }
     }
 

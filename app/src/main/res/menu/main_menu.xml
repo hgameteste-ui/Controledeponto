@@ -2,6 +2,11 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_import"
+        android:title="Importar CSV"
+        android:icon="@android:drawable/ic_menu_upload"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_settings"
         android:title="Configurações"
         android:icon="@android:drawable/ic_menu_preferences"

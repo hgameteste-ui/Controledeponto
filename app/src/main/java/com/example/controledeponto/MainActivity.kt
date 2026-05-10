@@ -3,10 +3,16 @@ package com.example.controledeponto
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -25,6 +31,22 @@ class MainActivity : AppCompatActivity() {
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
+    // Launcher para selecionar o arquivo CSV de qualquer tipo
+    private val importCsvLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            viewModel.importCsv(it)
+            Toast.makeText(this, "Importação iniciada...", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshRunnable = object : Runnable {
+        override fun run() {
+            viewModel.selectedWorkDay.value?.let { updateStats(it) }
+            refreshHandler.postDelayed(this, 60000)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -35,8 +57,17 @@ class MainActivity : AppCompatActivity() {
         setupObservers()
         setupListeners()
         
-        // Exibe a versão atualizada automaticamente do build.gradle
         binding.tvVersion.text = "v${BuildConfig.VERSION_NAME}"
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshHandler.post(refreshRunnable)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        refreshHandler.removeCallbacks(refreshRunnable)
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -45,11 +76,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == R.id.action_settings) {
-            startActivity(Intent(this, SettingsActivity::class.java))
-            return true
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            R.id.action_import -> {
+                importCsvLauncher.launch("*/*") // Filtro amplo para garantir a seleção do CSV
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
-        return super.onOptionsItemSelected(item)
     }
 
     private fun setupRecyclerView() {
@@ -63,7 +100,6 @@ class MainActivity : AppCompatActivity() {
     private fun setupObservers() {
         viewModel.selectedDate.observe(this) { date ->
             binding.tvDate.text = date.format(dateFormatter)
-            // Destacar se for hoje ou um dia diferente
             if (date == LocalDate.now()) {
                 binding.tvDate.setTextColor(resources.getColor(R.color.purple_500, theme))
             } else {
@@ -83,16 +119,41 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.allWorkDays.observe(this) { list ->
-            // Filtra o dia que está sendo editado para não aparecer no histórico abaixo
             val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
             historyAdapter.submitList(list.filter { it.date != selectedDate })
         }
 
-        // Observa o total acumulado do mês e atualiza no topo a direita
         viewModel.monthlyTotalMinutes.observe(this) { totalMinutes ->
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
+            val goalMinutes = monthlyGoalHours * 60L
+
             val hours = totalMinutes / 60
             val mins = totalMinutes % 60
-            binding.tvMonthlyTotal.text = String.format("Mês: %02dh %02dm", hours, mins)
+            val timeStr = String.format("%02dh %02dm", hours, mins)
+            
+            binding.tvToolbarMonthlyTotal.text = timeStr
+            binding.tvMonthlyTotal.text = timeStr
+            binding.progressMonthly.max = goalMinutes.toInt()
+            binding.progressMonthly.progress = totalMinutes.toInt().coerceAtMost(goalMinutes.toInt())
+
+            val remainingMinutes = (goalMinutes - totalMinutes).coerceAtLeast(0)
+            if (remainingMinutes > 0) {
+                binding.tvMonthlyRemaining.text = String.format("Faltam %dh %02dm para a meta de %dh", remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours)
+            } else {
+                binding.tvMonthlyRemaining.text = "Meta mensal batida! 🎉"
+            }
+        }
+
+        // Observa o status da importação para mostrar erros ou sucesso em uma janela
+        viewModel.importStatus.observe(this) { status ->
+            status?.let {
+                AlertDialog.Builder(this)
+                    .setTitle("Importação de Dados")
+                    .setMessage(it)
+                    .setPositiveButton("OK") { _, _ -> viewModel.clearImportStatus() }
+                    .show()
+            }
         }
     }
 
@@ -126,9 +187,11 @@ class MainActivity : AppCompatActivity() {
         val breakHours = prefs.getString("break_hours", "2")?.toLong() ?: 2L
         
         binding.tvTarget.text = "Jornada: ${workHours}h | Pausa: ${breakHours}h"
+        val isToday = viewModel.selectedDate.value == LocalDate.now()
 
         if (workDay?.clockIn == null) {
-            binding.tvPrediction.text = "Previsão de Saída: --:--"
+            binding.tvPrediction.text = "Saída Estimada: --:--"
+            binding.tvTimeRemaining.text = "Aguardando entrada..."
             binding.tvTotalWorked.text = "Total Trabalhado: 00h 00m"
             binding.progressWork.progress = 0
             return
@@ -142,12 +205,27 @@ class MainActivity : AppCompatActivity() {
             }
             else -> workDay.clockIn.plusHours(workHours + breakHours) 
         }
-        binding.tvPrediction.text = "Previsão de Saída: ${prediction.format(timeFormatter)}"
+        binding.tvPrediction.text = "Saída Estimada: ${prediction.format(timeFormatter)}"
 
-        // 2. Tempo Trabalhado (Usa a lógica centralizada no WorkDay)
-        val isToday = viewModel.selectedDate.value == LocalDate.now()
+        // Tempo Restante do Dia
+        if (isToday && workDay.clockOut == null) {
+            val now = LocalTime.now()
+            if (now.isBefore(prediction)) {
+                val remaining = Duration.between(now, prediction)
+                binding.tvTimeRemaining.text = String.format("Faltam %02dh %02dm", remaining.toHours(), remaining.toMinutes() % 60)
+                binding.tvTimeRemaining.setTextColor(resources.getColor(android.R.color.holo_green_dark, theme))
+            } else {
+                val extra = Duration.between(prediction, now)
+                binding.tvTimeRemaining.text = String.format("Hora extra: %02dh %02dm", extra.toHours(), extra.toMinutes() % 60)
+                binding.tvTimeRemaining.setTextColor(resources.getColor(android.R.color.holo_red_dark, theme))
+            }
+        } else {
+            binding.tvTimeRemaining.text = if (workDay.clockOut != null) "Jornada encerrada" else "Dia finalizado"
+            binding.tvTimeRemaining.setTextColor(resources.getColor(android.R.color.darker_gray, theme))
+        }
+
+        // 2. Tempo Trabalhado
         val totalMinutes = workDay.calculateTotalMinutes(isToday)
-
         val hours = totalMinutes / 60
         val mins = totalMinutes % 60
         binding.tvTotalWorked.text = String.format("Total Trabalhado: %02dh %02dm", hours, mins)
