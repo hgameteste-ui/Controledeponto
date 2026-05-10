@@ -123,14 +123,7 @@ class MainActivity : AppCompatActivity() {
             historyAdapter.submitList(list.filter { it.date != selectedDate })
         }
 
-        // Observa apenas o total excedente (horas extras) para o totalizador do topo
-        viewModel.monthlyOvertimeMinutes.observe(this) { overtimeMinutes ->
-            val hours = overtimeMinutes / 60
-            val mins = overtimeMinutes % 60
-            binding.tvToolbarMonthlyTotal.text = String.format("%02dh %02dm", hours, mins)
-        }
-
-        // Observa o total trabalhado para o card de progresso mensal
+        // Observa o total trabalhado para atualizar tanto o card quanto o topo
         viewModel.monthlyTotalMinutes.observe(this) { totalMinutes ->
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
@@ -138,13 +131,27 @@ class MainActivity : AppCompatActivity() {
 
             val hours = totalMinutes / 60
             val mins = totalMinutes % 60
-            val timeStr = String.format("%02dh %02dm", hours, mins)
+            val workedStr = String.format("%02dh %02dm", hours, mins)
             
-            binding.tvMonthlyTotal.text = timeStr
+            // Texto no topo: Total trabalhado | Quanto falta ou sobrou
+            val remainingMinutes = goalMinutes - totalMinutes
+            val toolbarText = if (remainingMinutes > 0) {
+                val remHours = remainingMinutes / 60
+                val remMins = remainingMinutes % 60
+                String.format("Total: %s | Falta: %dh %02dm", workedStr, remHours, remMins)
+            } else {
+                val extraMinutes = -remainingMinutes
+                val extHours = extraMinutes / 60
+                val extMins = extraMinutes % 60
+                String.format("Total: %s | Extra: %dh %02dm", workedStr, extHours, extMins)
+            }
+            binding.tvToolbarMonthlyTotal.text = toolbarText
+
+            // Atualiza o card de progresso mensal
+            binding.tvMonthlyTotal.text = workedStr
             binding.progressMonthly.max = goalMinutes.toInt()
             binding.progressMonthly.progress = totalMinutes.toInt().coerceAtMost(goalMinutes.toInt())
 
-            val remainingMinutes = (goalMinutes - totalMinutes).coerceAtLeast(0)
             if (remainingMinutes > 0) {
                 binding.tvMonthlyRemaining.text = String.format("Faltam %dh %02dm para a meta de %dh", remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours)
             } else {
