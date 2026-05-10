@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.nio.charset.Charset
+import java.util.Locale
 
 class WorkViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: WorkRepository = WorkRepository(
@@ -66,23 +66,18 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun importCsv(uri: Uri) = viewModelScope.launch {
-        _importStatus.postValue("Importando dados...")
+        _importStatus.postValue("Importando registros...")
         var count = 0
-        val errorLogs = mutableListOf<String>()
+        val errorLines = mutableListOf<String>()
 
         try {
             withContext(Dispatchers.IO) {
                 val context = getApplication<Application>()
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext
+                val inputStream = context.contentResolver.openInputStream(uri) ?: throw Exception("Arquivo não encontrado")
+                val bytes = inputStream.readBytes()
+                inputStream.close()
                 
-                // Tenta UTF-8, se falhar tenta Windows-1252 (comum em CSVs do Excel no Brasil)
-                val content = try {
-                    val decoder = Charsets.UTF_8.newDecoder()
-                    decoder.decode(java.nio.ByteBuffer.wrap(bytes))
-                    String(bytes, Charsets.UTF_8)
-                } catch (e: Exception) {
-                    String(bytes, Charset.forName("Windows-1252"))
-                }
+                val content = try { String(bytes, Charsets.UTF_8) } catch (e: Exception) { String(bytes, Charsets.ISO_8859_1) }
                 
                 val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yy")
                 val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -91,20 +86,16 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                     val line = rawLine.trim().replace("\uFEFF", "")
                     if (index == 0 || line.isBlank()) return@forEachIndexed 
                     
-                    // Usa ponto e vírgula como separador conforme seu exemplo
+                    // Separador ponto e vírgula conforme seu exemplo
                     val parts = line.split(";").map { it.trim().removeSurrounding("\"").trim() }
                     
-                    if (parts.size >= 5) {
+                    if (parts.size >= 2) {
                         try {
                             // Limpa a data: "qua., 01/04/26" -> extrai "01/04/26"
                             val rawDate = parts[0]
-                            val cleanDateStr = if (rawDate.contains(",")) {
-                                rawDate.split(",")[1].trim()
-                            } else {
-                                rawDate
-                            }
-
-                            val date = LocalDate.parse(cleanDateStr, dateFormatter)
+                            val dateStr = if (rawDate.contains(",")) rawDate.split(",")[1].trim() else rawDate
+                            
+                            val date = LocalDate.parse(dateStr, dateFormatter)
                             
                             fun parseTime(s: String?): LocalTime? {
                                 if (s.isNullOrBlank()) return null
@@ -112,7 +103,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                             }
 
                             val clockIn = parseTime(parts.getOrNull(1))
-                            // Só importa se houver pelo menos o horário de entrada
+                            // Só importa se houver pelo menos entrada
                             if (clockIn != null) {
                                 val workDay = WorkDay(
                                     date = date,
@@ -125,18 +116,14 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                                 count++
                             }
                         } catch (e: Exception) {
-                            if (errorLogs.size < 3) errorLogs.add("Linha ${index + 1}: ${e.message}")
+                            if (errorLines.size < 3) errorLines.add("Linha ${index + 1}: ${e.localizedMessage}")
                         }
                     }
                 }
             }
             
-            val resultMsg = if (count > 0) {
-                "Sucesso! $count registros importados." + (if (errorLogs.isNotEmpty()) "\n\nErros:\n${errorLogs.joinToString("\n")}" else "")
-            } else {
-                "Nenhum registro importado. Verifique se o separador é ';' e a data está no formato '01/04/26'."
-            }
-            _importStatus.postValue(resultMsg)
+            _importStatus.postValue(if (count > 0) "Sucesso! $count registros de Abril importados." 
+                                   else "Erro: Nenhum dado válido encontrado. Verifique o formato do arquivo.")
             
         } catch (e: Exception) {
             _importStatus.postValue("Falha ao abrir arquivo: ${e.localizedMessage}")

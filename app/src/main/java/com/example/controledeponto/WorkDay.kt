@@ -37,4 +37,10 @@ data class WorkDay(
             Duration.between(start, end).toMinutes().coerceAtLeast(0)
         }
     }
+
+    fun calculateBreakMinutes(isToday: Boolean = false): Long {
+        val start = breakStart ?: return 0L
+        val end = breakEnd ?: if (isToday) LocalTime.now() else start
+        return Duration.between(start, end).toMinutes().coerceAtLeast(0)
+    }
 }
