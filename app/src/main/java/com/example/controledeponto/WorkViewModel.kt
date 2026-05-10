@@ -150,6 +150,42 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun exportCsv(uri: Uri) = viewModelScope.launch {
+        try {
+            withContext(Dispatchers.IO) {
+                val selectedDate = _selectedDate.value ?: LocalDate.now()
+                val list = repository.allWorkDays.value?.filter { 
+                    it.date.month == selectedDate.month && it.date.year == selectedDate.year 
+                }?.sortedBy { it.date } ?: emptyList()
+
+                val builder = StringBuilder()
+                builder.append("Data;Entrada;Início Pausa;Fim Pausa;Saída;Total Trabalhado\n")
+                
+                val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+                val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yy")
+
+                list.forEach { 
+                    val workedMinutes = it.calculateTotalMinutes(isToday = it.date == LocalDate.now())
+                    val workedStr = String.format("%02dh %02dm", workedMinutes / 60, workedMinutes % 60)
+                    
+                    builder.append("${it.date.format(dateFormatter)};")
+                    builder.append("${it.clockIn?.format(timeFormatter) ?: ""};")
+                    builder.append("${it.breakStart?.format(timeFormatter) ?: ""};")
+                    builder.append("${it.breakEnd?.format(timeFormatter) ?: ""};")
+                    builder.append("${it.clockOut?.format(timeFormatter) ?: ""};")
+                    builder.append("$workedStr\n")
+                }
+
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { 
+                    it.write(builder.toString().toByteArray())
+                }
+            }
+            _importStatus.postValue("Backup realizado com sucesso!")
+        } catch (e: Exception) {
+            _importStatus.postValue("Erro ao realizar backup: ${e.localizedMessage}")
+        }
+    }
+
     fun clearImportStatus() {
         _importStatus.value = null
     }
