@@ -166,7 +166,11 @@ class MainActivity : AppCompatActivity() {
             (totalMinutes.toDouble() / goalMinutes * 100).toInt()
         } else 0
 
-        binding.tvToolbarMonthlyTotal.text = "Extras: $overtimeStr | Alcançado: $percentage%"
+        val remainingMinutes = (goalMinutes - totalMinutes).coerceAtLeast(0)
+        val remainingStr = String.format("%02dh %02dm", remainingMinutes / 60, remainingMinutes % 60)
+
+        // Atualiza conforme solicitado: Total de horas extras, horas que faltam e percentual alcançado
+        binding.tvToolbarMonthlyTotal.text = "Extras: $overtimeStr | Falta: $remainingStr | Alcançado: $percentage%"
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
