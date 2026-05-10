@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Controle de ponto</string>
+    <string name="btn_today_desc">Ir para hoje</string>
 </resources>
