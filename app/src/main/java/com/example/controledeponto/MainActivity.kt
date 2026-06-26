@@ -1,8 +1,12 @@
 package com.example.controledeponto
 
+import android.app.AlarmManager
 import android.app.DatePickerDialog
+import android.app.PendingIntent
 import android.app.TimePickerDialog
+import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -35,6 +39,8 @@ class MainActivity : AppCompatActivity() {
         uri?.let { viewModel.importCsv(it) }
     }
 
+    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -44,6 +50,15 @@ class MainActivity : AppCompatActivity() {
 
         setupObservers()
         setupListeners()
+        checkNotificationPermission()
+    }
+
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
 
     private fun setupListeners() {
@@ -101,7 +116,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupObservers() {
         viewModel.selectedDate.observe(this) { date ->
-            // Formata a data com o dia da semana e capitaliza a primeira letra
             val formattedDate = date.format(dateFormatter)
             binding.tvDate.text = formattedDate.replaceFirstChar { it.uppercase() }
             
@@ -114,7 +128,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.selectedWorkDay.observe(this) { workDay ->
-            // Atualiza apenas os valores das horas, os rótulos estão fixos no XML para alinhamento
             binding.tvClockIn.text = workDay?.clockIn?.format(timeFormatter) ?: "--:--"
             binding.tvBreakStart.text = workDay?.breakStart?.format(timeFormatter) ?: "--:--"
             binding.tvBreakEnd.text = workDay?.breakEnd?.format(timeFormatter) ?: "--:--"
@@ -127,11 +140,8 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.monthlyBalanceMinutes.observe(this) { updateToolbarSummary() }
 
-        // Observa os detalhes dos meses anteriores para preencher a lista acima do progresso
         viewModel.quarterlyMonthlyOvertime.observe(this) { monthlyList ->
             binding.layoutQuarterlyMonths.removeAllViews()
-            
-            // Re-adiciona o título
             val titleView = TextView(this).apply {
                 text = "EXTRAS NO TRIMESTRE"
                 setTextColor(resources.getColor(android.R.color.holo_blue_dark, theme))
@@ -156,7 +166,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (monthlyList.isNotEmpty()) {
-                // Linha separadora
                 val separator = View(this).apply {
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
                         setMargins(0, 8, 0, 8)
@@ -165,7 +174,6 @@ class MainActivity : AppCompatActivity() {
                 }
                 binding.layoutQuarterlyMonths.addView(separator)
 
-                // Totalizador
                 val totalHours = totalMinutes / 60
                 val totalMins = totalMinutes % 60
                 val totalTextView = TextView(this).apply {
@@ -179,7 +187,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Observa o total de horas extras para atualizar o card de PROGRESSO MENSAL e a Toolbar
         viewModel.monthlyOvertimeMinutes.observe(this) { overtimeMinutes ->
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
@@ -189,7 +196,6 @@ class MainActivity : AppCompatActivity() {
             val mins = overtimeMinutes % 60
             val totalStr = String.format(Locale.getDefault(), "%02dh %02dm", hours, mins)
             
-            // Card de progresso mensal agora mostra o TOTAL DE EXTRAS acumulado no mês
             binding.tvMonthlyTotal.text = totalStr
             binding.progressMonthly.max = goalMinutes.toInt()
             binding.progressMonthly.progress = overtimeMinutes.toInt().coerceAtMost(goalMinutes.toInt())
@@ -204,7 +210,6 @@ class MainActivity : AppCompatActivity() {
             updateToolbarSummary()
         }
 
-        // Observa a sugestão de horas EXTRAS diárias para atingir a meta
         viewModel.suggestedDailyOvertimeMinutes.observe(this) { minutes ->
             val hours = minutes / 60
             val mins = minutes % 60
@@ -212,7 +217,6 @@ class MainActivity : AppCompatActivity() {
                 "Sugestão de extras/dia: %02dh %02dm", hours, mins)
         }
 
-        // Observa a extrapolação (projeção) de extras para o fim do mês
         viewModel.extrapolatedOvertimeMinutes.observe(this) { minutes ->
             val absMinutes = Math.abs(minutes)
             val hours = absMinutes / 60
@@ -222,7 +226,6 @@ class MainActivity : AppCompatActivity() {
                 "Projeção final do mês: %s%02dh %02dm", sign, hours, mins)
         }
 
-        // Atualiza a contagem de dias úteis (Total e Restantes)
         viewModel.monthlyBusinessDays.observe(this) { total ->
             val remaining = viewModel.remainingBusinessDays.value ?: 0
             binding.tvMonthlyBusinessDays.text = "Dias úteis: $total | Restantes: $remaining"
@@ -233,7 +236,6 @@ class MainActivity : AppCompatActivity() {
             binding.tvMonthlyBusinessDays.text = "Dias úteis: $total | Restantes: $remaining"
         }
 
-        // Observa o status da importação para mostrar erros ou sucesso em uma janela
         viewModel.importStatus.observe(this) { status ->
             status?.let {
                 AlertDialog.Builder(this)
@@ -252,24 +254,20 @@ class MainActivity : AppCompatActivity() {
         val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
         val goalMinutes = monthlyGoalHours * 60L
 
-        // 1. Saldo líquido (Banco de horas: Extra - Débito)
         val absBalance = Math.abs(balanceMinutes)
         val balanceHours = absBalance / 60
         val balanceMins = absBalance % 60
         val sign = if (balanceMinutes >= 0) "+" else "-"
         val balanceStr = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, balanceHours, balanceMins)
         
-        // 2. Extras do Mês (Conforme solicitado: "total de horas extras do mes corrente")
         val eHours = overtimeMinutes / 60
         val eMins = overtimeMinutes % 60
         val extrasStr = String.format(Locale.getDefault(), "%02dh %02dm", eHours, eMins)
 
-        // 3. Percentual alcançado baseado no total de extras vs meta mensal
         val percentage = if (goalMinutes > 0) {
             (overtimeMinutes.toDouble() / goalMinutes * 100).toInt()
         } else 0
 
-        // Exibição atualizada no topo: Saldo | Extras Mês | Meta: %
         binding.tvToolbarMonthlyTotal.text = String.format(Locale.getDefault(), 
             "Saldo: %s | Extras: %s | Meta: %d%%",
             balanceStr, extrasStr, percentage)
@@ -279,7 +277,6 @@ class MainActivity : AppCompatActivity() {
         val date = viewModel.selectedDate.value ?: LocalDate.now()
         val current = workDay ?: WorkDay(date)
         
-        // Configura cliques nos valores e nos rótulos para facilitar a edição
         val clickListener = View.OnClickListener { view ->
             val timeToEdit = when(view.id) {
                 R.id.tvClockIn, R.id.lblClockIn -> current.clockIn
@@ -328,28 +325,27 @@ class MainActivity : AppCompatActivity() {
     private fun updateStats(workDay: WorkDay?) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L
+        val breakHours = prefs.getString("break_hours", "2")?.toLong() ?: 2L
         val targetMinutes = workHours * 60
+        val breakMinutes = breakHours * 60
         
-        binding.tvTarget.text = "Jornada: ${workHours}h | Pausa: ${prefs.getString("break_hours", "2")}h"
+        binding.tvTarget.text = "Jornada: ${workHours}h | Pausa: ${breakHours}h"
         
-        val totalWorked = workDay?.calculateTotalMinutes(isToday = workDay.date == LocalDate.now()) ?: 0L
+        val isToday = workDay?.date == LocalDate.now()
+        val totalWorked = workDay?.calculateTotalMinutes(isToday = isToday) ?: 0L
         val hours = totalWorked / 60
         val mins = totalWorked % 60
         
-        // Remove "Trabalhado: " prefix to avoid duplication with XML label
         binding.tvTotalWorked.text = String.format(Locale.getDefault(), "%02dh %02dm", hours, mins)
         
-        // Calculate Daily Overtime
         val overtimeMinutes = (totalWorked - targetMinutes).coerceAtLeast(0)
         val oHours = overtimeMinutes / 60
         val oMins = overtimeMinutes % 60
         binding.tvDailyOvertime.text = String.format(Locale.getDefault(), "+%02dh %02dm", oHours, oMins)
         
-        // Update daily progress bar
         binding.progressWork.max = targetMinutes.toInt()
         binding.progressWork.progress = totalWorked.toInt().coerceAtMost(targetMinutes.toInt())
 
-        // Update remaining time message
         val remaining = (targetMinutes - totalWorked).coerceAtLeast(0)
         val rHours = remaining / 60
         val rMins = remaining % 60
@@ -357,6 +353,76 @@ class MainActivity : AppCompatActivity() {
             String.format(Locale.getDefault(), "Faltam %02dh %02dm", rHours, rMins)
         } else {
             "Jornada concluída!"
+        }
+
+        // Alertas de Notificação e Predição
+        if (workDay != null) {
+            if (workDay.breakStart != null) cancelNotification(2)
+            if (workDay.breakEnd != null) cancelNotification(3)
+            if (workDay.clockOut != null) cancelNotification(4)
+
+            val nextEvent = workDay.getNextPrediction(targetMinutes, breakMinutes)
+            if (nextEvent != null) {
+                val (eventName, eventTime) = nextEvent
+                binding.tvPrediction.text = "$eventName Estimada: ${eventTime.format(timeFormatter)}"
+                if (isToday) {
+                    scheduleNotification(eventName, eventTime)
+                }
+            } else {
+                binding.tvPrediction.text = if (workDay.clockOut != null) "Expediente encerrado" else "Saída Estimada: --:--"
+            }
+        } else {
+            binding.tvPrediction.text = "Saída Estimada: --:--"
+        }
+    }
+
+    private fun scheduleNotification(type: String, time: LocalTime) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(this, NotificationReceiver::class.java).apply {
+            putExtra("type", type)
+        }
+        
+        val requestCode = when(type) {
+            "Início do Intervalo" -> 2
+            "Fim do Intervalo" -> 3
+            "Saída" -> 4
+            else -> 0
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, requestCode, intent, 
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, time.hour)
+            set(Calendar.MINUTE, time.minute)
+            set(Calendar.SECOND, 0)
+            add(Calendar.MINUTE, 15) // 15 minutos de tolerância
+        }
+
+        if (calendar.timeInMillis > System.currentTimeMillis()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+            }
+        }
+    }
+
+    private fun cancelNotification(requestCode: Int) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(this, NotificationReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, requestCode, intent, 
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
         }
     }
 

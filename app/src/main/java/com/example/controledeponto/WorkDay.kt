@@ -19,20 +19,15 @@ data class WorkDay(
         val now = LocalTime.now()
         
         return if (breakStart != null) {
-            // Período 1: Entrada até Início do Intervalo
             val p1 = Duration.between(start, breakStart).toMinutes()
-            
-            // Período 2: Fim do Intervalo até Saída (ou Agora)
             val p2 = if (breakEnd != null) {
                 val end = clockOut ?: (if (isToday) now else breakEnd)
                 if (end.isAfter(breakEnd)) {
                     Duration.between(breakEnd, end).toMinutes()
                 } else 0L
             } else 0L
-            
             (p1 + p2).coerceAtLeast(0)
         } else {
-            // Caso não tenha registrado intervalo (ou ainda não chegou nele)
             val end = clockOut ?: (if (isToday) now else start)
             Duration.between(start, end).toMinutes().coerceAtLeast(0)
         }
@@ -42,5 +37,23 @@ data class WorkDay(
         val start = breakStart ?: return 0L
         val end = breakEnd ?: if (isToday) LocalTime.now() else start
         return Duration.between(start, end).toMinutes().coerceAtLeast(0)
+    }
+
+    /**
+     * Calcula o próximo evento previsto e o horário.
+     * @return Pair(Nome do Evento, Horário Previsto)
+     */
+    fun getNextPrediction(targetMinutes: Long, breakMinutes: Long): Pair<String, LocalTime>? {
+        return when {
+            clockIn == null -> null
+            breakStart == null -> "Início do Intervalo" to clockIn.plusHours(4)
+            breakEnd == null -> "Fim do Intervalo" to breakStart.plusMinutes(breakMinutes)
+            clockOut == null -> {
+                val workedBeforeBreak = Duration.between(clockIn, breakStart).toMinutes()
+                val remaining = targetMinutes - workedBeforeBreak
+                "Saída" to breakEnd.plusMinutes(remaining)
+            }
+            else -> null
+        }
     }
 }
