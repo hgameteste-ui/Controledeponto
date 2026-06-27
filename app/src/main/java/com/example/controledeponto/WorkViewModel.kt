@@ -20,13 +20,12 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 2.0.0    Jun/2026    Walter R. C.    Transição para o modelo de histórico móvel de 3 meses (rolling quarter)
+ *                                      no extrato trimestral, abandonando o modelo de trimestre civil fixo.
+ * 1.9.9    Jun/2026    Walter R. C.    Implementação da regra de saldo acumulado trimestral móvel (rolling quarter)
+ *                                      no painel principal para visão consolidada do banco de horas.
  * 1.9.5    Jun/2026    Walter R. C.    Suporte ao armazenamento de descrições oficiais de feriados.
  * 1.9.0    Jun/2026    Walter R. C.    Exposição de holidaysList para suporte à nova tela HolidaysConfigActivity.
- * 1.8.9    Jun/2026    Walter R. C.    Remoção da sincronização automática de feriados;
- *                                      implementação de gatilho manual via UI.
- * 1.8.7    Jun/2026    Walter R. C.    Implementação da importação de feriados via BrasilAPI.
- * 1.8.5    Jun/2026    Walter R. C.    Ajuste nos métodos de cálculo para ignorar a meta diária
- *                                      caso o dia seja sinalizado como feriado ou folga [isHolidayOrOffDay].
  */
 
 package com.example.controledeponto
@@ -84,22 +83,40 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         addSource(_selectedDate) { date -> value = calculateOvertime(allWorkDays.value, date, onlySurplus = false) }
     }
 
+    /**
+     * Saldo acumulado do trimestre móvel (mês selecionado + 2 anteriores).
+     */
+    val rollingQuarterlyBalanceMinutes: LiveData<Long> = MediatorLiveData<Long>().apply {
+        addSource(allWorkDays) { list -> value = calculateRollingQuarterlyBalance(list, _selectedDate.value) }
+        addSource(_selectedDate) { date -> value = calculateRollingQuarterlyBalance(allWorkDays.value, date) }
+    }
+
+    /**
+     * NOVO v2.0.0: Lista de meses do trimestre móvel com seus saldos individuais.
+     * Utilizado na tela de Extrato Trimestral.
+     */
+    val rollingQuarterlyMonthsOvertime: LiveData<List<Pair<String, Long>>> = MediatorLiveData<List<Pair<String, Long>>>().apply {
+        addSource(allWorkDays) { list -> value = calculateRollingQuarterlyMonths(list, _selectedDate.value) }
+        addSource(_selectedDate) { date -> value = calculateRollingQuarterlyMonths(allWorkDays.value, date) }
+    }
+
     val monthlyBusinessDays: LiveData<Int> = _selectedDate.map { date -> calculateBusinessDays(date) }
     val remainingBusinessDays: LiveData<Int> = _selectedDate.map { date -> calculateRemainingBusinessDays(date) }
 
     val suggestedDailyOvertimeMinutes: LiveData<Long> = MediatorLiveData<Long>().apply {
         val update = {
-            val overtime = monthlyOvertimeMinutes.value ?: 0L
+            val balance = rollingQuarterlyBalanceMinutes.value ?: 0L
             val remaining = remainingBusinessDays.value ?: 0
             val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
-            val goalHours = prefs.getString("monthly_goal", "30")?.toLongOrNull() ?: 30L
-            val goalMinutes = goalHours * 60
+            val monthlyGoalHours = prefs.getString("monthly_goal", "30")?.toLongOrNull() ?: 30L
+            val quarterlyGoalMinutes = monthlyGoalHours * 3 * 60
+            
             if (remaining > 0) {
-                val neededExtraTotal = (goalMinutes - overtime).coerceAtLeast(0L)
+                val neededExtraTotal = (quarterlyGoalMinutes - balance).coerceAtLeast(0L)
                 value = neededExtraTotal / remaining
             } else value = 0L
         }
-        addSource(monthlyOvertimeMinutes) { update() }
+        addSource(rollingQuarterlyBalanceMinutes) { update() }
         addSource(remainingBusinessDays) { update() }
     }
 
@@ -180,6 +197,54 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun calculateRollingQuarterlyBalance(list: List<WorkDay>?, selectedDate: LocalDate?): Long {
+        if (list == null || selectedDate == null) return 0L
+        val now = LocalDate.now()
+        val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
+        val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
+        
+        val targetMonths = listOf(
+            selectedDate,
+            selectedDate.minusMonths(1),
+            selectedDate.minusMonths(2)
+        )
+
+        return list.filter { day ->
+            targetMonths.any { it.month == day.date.month && it.year == day.date.year } && !day.date.isAfter(now)
+        }.sumOf { day ->
+            val worked = day.calculateTotalMinutes(isToday = day.date == now)
+            val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
+            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null)) 0L else dailyGoalMinutes
+            worked - effectiveGoal
+        }
+    }
+
+    private fun calculateRollingQuarterlyMonths(list: List<WorkDay>?, selectedDate: LocalDate?): List<Pair<String, Long>> {
+        if (list == null || selectedDate == null) return emptyList()
+        val now = LocalDate.now()
+        val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
+        val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
+        
+        val targetMonths = listOf(
+            selectedDate.minusMonths(2),
+            selectedDate.minusMonths(1),
+            selectedDate
+        )
+
+        return targetMonths.map { target ->
+            val monthTotal = list.filter {
+                it.date.year == target.year && it.date.monthValue == target.monthValue && !it.date.isAfter(now)
+            }.sumOf { day ->
+                val worked = day.calculateTotalMinutes(isToday = day.date == now)
+                val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
+                val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null)) 0L else dailyGoalMinutes
+                worked - effectiveGoal
+            }
+            val monthName = target.month.getDisplayName(TextStyle.FULL, Locale("pt", "BR")).replaceFirstChar { it.uppercase() }
+            monthName to monthTotal
+        }
+    }
+
     private fun calculateQuarterlyAccumulated(list: List<WorkDay>?, selectedDate: LocalDate?): Long {
         if (list == null || selectedDate == null) return 0L
         val now = LocalDate.now()
@@ -239,8 +304,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Consome a BrasilAPI para buscar feriados do ano e sincronizar com o banco local.
-     * Utiliza HttpURLConnection nativa para evitar dependências externas.
-     * Atualizado para capturar o nome oficial do feriado.
      */
     fun fetchAndSyncHolidays(year: Int) = viewModelScope.launch(Dispatchers.IO) {
         _importStatus.postValue("Sincronizando feriados de $year...")
@@ -256,7 +319,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 for (i in 0 until jsonArray.length()) {
                     val jsonObj = jsonArray.getJSONObject(i)
                     val date = LocalDate.parse(jsonObj.getString("date"))
-                    val holidayName = jsonObj.getString("name") // Extração do nome oficial
+                    val holidayName = jsonObj.getString("name")
 
                     val existing = repository.getWorkDaySync(date)
                     if (existing == null) {

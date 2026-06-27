@@ -43,6 +43,11 @@
             android:label="Gerenciar Feriados"
             android:parentActivityName=".MainActivity" />
 
+        <activity
+            android:name=".QuarterlyStatementActivity"
+            android:label="Extrato Trimestral"
+            android:parentActivityName=".MainActivity" />
+
         <receiver
             android:name=".NotificationReceiver"
             android:enabled="true"

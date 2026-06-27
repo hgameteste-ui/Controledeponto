@@ -18,6 +18,9 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 1.9.9    Jun/2026    Walter R. C.    Refatoração do painel de progresso para exibir o saldo acumulado 
+ *                                      dos últimos 3 meses (rolling quarterly balance).
+ * 1.9.8    Jun/2026    Walter R. C.    Remoção do bloco trimestral do painel principal para ganho de área útil.
  * 1.9.0    Jun/2026    Walter R. C.    Acesso à tela HolidaysConfigActivity via Toolbar.
  * 1.8.9    Jun/2026    Walter R. C.    Adição de ação manual na Toolbar para sincronizar feriados do ano
  *                                      via BrasilAPI com base na data em exibição na UI.
@@ -128,6 +131,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_quarterly_statement -> {
+                startActivity(Intent(this, QuarterlyStatementActivity::class.java))
+                true
+            }
             R.id.action_manage_holidays -> {
                 startActivity(Intent(this, HolidaysConfigActivity::class.java))
                 true
@@ -166,71 +173,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.monthlyBalanceMinutes.observe(this) { updateToolbarSummary() }
-        viewModel.monthlyOvertimeMinutes.observe(this) { overtimeMinutes ->
+        
+        // Atualizado para observar o saldo trimestral acumulado (rolling quarterly balance)
+        viewModel.rollingQuarterlyBalanceMinutes.observe(this) { balanceMinutes ->
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
-            val goalMinutes = monthlyGoalHours * 60L
+            val quarterlyGoalMinutes = monthlyGoalHours * 3 * 60L
 
-            val hours = overtimeMinutes / 60
-            val mins = overtimeMinutes % 60
-            binding.tvMonthlyTotal.text = String.format(Locale.getDefault(), "%02dh %02dm", hours, mins)
-            binding.progressMonthly.max = goalMinutes.toInt()
-            binding.progressMonthly.progress = overtimeMinutes.toInt().coerceAtMost(goalMinutes.toInt())
+            val absBalance = Math.abs(balanceMinutes)
+            val hours = absBalance / 60
+            val mins = absBalance % 60
+            val sign = if (balanceMinutes >= 0) "+" else "-"
+            
+            binding.tvMonthlyTotal.text = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, hours, mins)
+            binding.progressMonthly.max = quarterlyGoalMinutes.toInt()
+            binding.progressMonthly.progress = balanceMinutes.coerceAtLeast(0L).toInt().coerceAtMost(quarterlyGoalMinutes.toInt())
 
-            val remainingMinutes = (goalMinutes - overtimeMinutes).coerceAtLeast(0)
+            val remainingMinutes = (quarterlyGoalMinutes - balanceMinutes).coerceAtLeast(0)
             binding.tvMonthlyRemaining.text = if (remainingMinutes > 0) {
-                String.format(Locale.getDefault(), "Faltam %dh %02dm para a meta de %dh", remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours)
+                String.format(Locale.getDefault(), "Faltam %dh %02dm para a meta trimestral de %dh", 
+                    remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours * 3)
             } else {
-                "Meta mensal batida! 🎉"
+                "Meta trimestral batida! 🎉"
             }
             updateToolbarSummary()
-        }
-
-        viewModel.quarterlyMonthlyOvertime.observe(this) { monthlyList ->
-            binding.layoutQuarterlyMonths.removeAllViews()
-            val titleView = TextView(this).apply {
-                text = "EXTRAS NO TRIMESTRE"
-                setTextColor(resources.getColor(android.R.color.holo_blue_dark, theme))
-                textSize = 11f
-                setPadding(0, 0, 0, 8)
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            }
-            binding.layoutQuarterlyMonths.addView(titleView)
-
-            var totalMinutes = 0L
-            monthlyList.forEach { (month, minutes) ->
-                totalMinutes += minutes
-                val hours = minutes / 60
-                val mins = minutes % 60
-                val textView = TextView(this).apply {
-                    text = String.format(Locale.getDefault(), "%s: %02dh %02dm", month, hours, mins)
-                    textSize = 14f
-                    setTextColor(resources.getColor(android.R.color.black, theme))
-                    setPadding(0, 4, 0, 4)
-                }
-                binding.layoutQuarterlyMonths.addView(textView)
-            }
-
-            if (monthlyList.isNotEmpty()) {
-                val separator = View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 2).apply {
-                        setMargins(0, 8, 0, 8)
-                    }
-                    setBackgroundColor(resources.getColor(android.R.color.darker_gray, theme))
-                }
-                binding.layoutQuarterlyMonths.addView(separator)
-
-                val totalHours = totalMinutes / 60
-                val totalMins = totalMinutes % 60
-                val totalTextView = TextView(this).apply {
-                    text = String.format(Locale.getDefault(), "TOTAL: %02dh %02dm", totalHours, totalMins)
-                    textSize = 15f
-                    setTextColor(resources.getColor(android.R.color.holo_blue_dark, theme))
-                    setTypeface(null, android.graphics.Typeface.BOLD)
-                    setPadding(0, 4, 0, 4)
-                }
-                binding.layoutQuarterlyMonths.addView(totalTextView)
-            }
         }
 
         viewModel.suggestedDailyOvertimeMinutes.observe(this) { minutes ->

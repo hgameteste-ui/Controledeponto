@@ -62,47 +62,15 @@
             android:layout_height="wrap_content"
             android:padding="16dp">
 
-            <!-- Resumo do Trimestre Atual -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardQuarterly"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="#E8EAF6"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="0dp"
-                app:layout_constraintTop_toTopOf="parent">
-
-                <LinearLayout
-                    android:id="@+id/layoutQuarterlyMonths"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="12dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="EXTRAS NO TRIMESTRE"
-                        android:textColor="#3F51B5"
-                        android:textSize="11sp"
-                        android:layout_marginBottom="4dp"
-                        android:textStyle="bold" />
-
-                    <!-- Dinamicamente preenchido -->
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Card de Meta Mensal (Dashboard) -->
+            <!-- Card de Meta Trimestral (Dashboard) - Refatorado v1.9.9 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardMonthly"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 app:cardBackgroundColor="#F3E5F5"
                 app:cardCornerRadius="16dp"
                 app:cardElevation="0dp"
-                app:layout_constraintTop_toBottomOf="@id/cardQuarterly">
+                app:layout_constraintTop_toTopOf="parent">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -114,7 +82,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="PROGRESSO MENSAL"
+                        android:text="SALDO DO TRIMESTRE"
                         android:textColor="#7B1FA2"
                         android:textSize="11sp"
                         android:textStyle="bold" />
@@ -127,7 +95,7 @@
                         android:textColor="#4A148C"
                         android:textSize="26sp"
                         android:textStyle="bold"
-                        tools:text="05h 20m" />
+                        tools:text="+05h 20m" />
 
                     <com.google.android.material.progressindicator.LinearProgressIndicator
                         android:id="@+id/progressMonthly"
@@ -149,7 +117,7 @@
                         android:textColor="#7B1FA2"
                         android:textSize="12sp"
                         android:textStyle="italic"
-                        tools:text="Faltam 24h 40m para a meta de 30h" />
+                        tools:text="Faltam 24h 40m para a meta de 90h" />
 
                     <TextView
                         android:id="@+id/tvSuggestedDaily"
