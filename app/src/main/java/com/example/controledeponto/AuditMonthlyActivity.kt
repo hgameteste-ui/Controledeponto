@@ -10,6 +10,7 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 2.3.2    Jun/2026    Walter R. C.    Ajuste de clipping e padding de acessibilidade do RecyclerView.
  * 2.3.0    Jun/2026    Walter R. C.    Implementação da soma corrente (Running Total) no saldo mensal.
  * 2.1.6    Jun/2026    Walter R. C.    Correção do bug de clique nos seletores de mês e reatividade.
  * 2.1.0    Jun/2026    Walter R. C.    Criação da tela de auditoria mensal detalhada.

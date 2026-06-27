@@ -10,6 +10,7 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 1.9.10   Jun/2026    Walter R. C.    Ajuste de scroll, padding de segurança e correção de sobreposição do FAB.
  * 1.9.7    Jun/2026    Walter R. C.    Inclusão do dia da semana localizado (pt-BR) na listagem.
  * 1.9.6    Jun/2026    Walter R. C.    Ordenação cronológica crescente (ASC) e exibição 
  *                                      da descrição oficial do feriado.
