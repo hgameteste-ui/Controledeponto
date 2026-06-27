@@ -17,4 +17,9 @@ class WorkRepository(private val workDayDao: WorkDayDao) {
     suspend fun getWorkDaySync(date: LocalDate): WorkDay? {
         return workDayDao.getWorkDaySync(date)
     }
+
+    // Retorna a lista de feriados filtrados
+    fun getHolidays(): LiveData<List<WorkDay>> {
+        return workDayDao.getHolidays()
+    }
 }

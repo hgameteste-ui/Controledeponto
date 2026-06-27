@@ -2,6 +2,10 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_manage_holidays"
+        android:title="Gerenciar Feriados"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_sync_holidays"
         android:title="Sincronizar Feriados"
         android:icon="@drawable/ic_sync"

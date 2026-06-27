@@ -23,7 +23,8 @@ data class WorkDay(
     val breakStart: LocalTime? = null,
     val breakEnd: LocalTime? = null,
     val clockOut: LocalTime? = null,
-    val isHolidayOrOffDay: Boolean = false // NOVO CAMPO
+    val isHolidayOrOffDay: Boolean = false,
+    val holidayName: String? = null // NOVO CAMPO: Armazena o nome oficial do feriado
 ) {
     fun calculateTotalMinutes(isToday: Boolean = false): Long {
         val start = clockIn ?: return 0L

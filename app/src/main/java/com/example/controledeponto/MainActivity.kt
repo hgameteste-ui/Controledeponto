@@ -18,13 +18,12 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 1.9.0    Jun/2026    Walter R. C.    Acesso à tela HolidaysConfigActivity via Toolbar.
  * 1.8.9    Jun/2026    Walter R. C.    Adição de ação manual na Toolbar para sincronizar feriados do ano
  *                                      via BrasilAPI com base na data em exibição na UI.
  * 1.8.6    Jun/2026    Walter R. C.    Implementação de clique longo na data para alternar Feriado/Folga.
  * 1.8.5    Jun/2026    Walter R. C.    Integração visual com o novo campo [isHolidayOrOffDay],
  *                                      sanando a cobrança de horas em feriados e folgas na interface.
- * 1.8.4    Jun/2026    Walter R. C.    Ajuste no método updateStats para extrair a data do ViewModel,
- *                                      zerando a meta em fins de semana e sanando o bug de -08h 00m.
  */
 
 package com.example.controledeponto
@@ -129,9 +128,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_manage_holidays -> {
+                startActivity(Intent(this, HolidaysConfigActivity::class.java))
+                true
+            }
             R.id.action_history -> { startActivity(Intent(this, HistoryActivity::class.java)); true }
             R.id.action_sync_holidays -> {
-                // Sincroniza usando o ano do dia atualmente ativo na interface
                 val year = (viewModel.selectedDate.value ?: LocalDate.now()).year
                 viewModel.fetchAndSyncHolidays(year)
                 true

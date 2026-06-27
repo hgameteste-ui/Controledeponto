@@ -20,6 +20,8 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 1.9.5    Jun/2026    Walter R. C.    Suporte ao armazenamento de descrições oficiais de feriados.
+ * 1.9.0    Jun/2026    Walter R. C.    Exposição de holidaysList para suporte à nova tela HolidaysConfigActivity.
  * 1.8.9    Jun/2026    Walter R. C.    Remoção da sincronização automática de feriados;
  *                                      implementação de gatilho manual via UI.
  * 1.8.7    Jun/2026    Walter R. C.    Implementação da importação de feriados via BrasilAPI.
@@ -63,6 +65,9 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val allWorkDays: LiveData<List<WorkDay>> = repository.allWorkDays
+
+    // Lista reativa de feriados para a HolidaysConfigActivity
+    val holidaysList: LiveData<List<WorkDay>> = repository.getHolidays()
 
     val monthlyTotalMinutes: LiveData<Long> = MediatorLiveData<Long>().apply {
         addSource(allWorkDays) { list -> value = calculateTotal(list, _selectedDate.value) }
@@ -235,6 +240,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Consome a BrasilAPI para buscar feriados do ano e sincronizar com o banco local.
      * Utiliza HttpURLConnection nativa para evitar dependências externas.
+     * Atualizado para capturar o nome oficial do feriado.
      */
     fun fetchAndSyncHolidays(year: Int) = viewModelScope.launch(Dispatchers.IO) {
         _importStatus.postValue("Sincronizando feriados de $year...")
@@ -248,13 +254,23 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 val response = connection.inputStream.bufferedReader().use { it.readText() }
                 val jsonArray = JSONArray(response)
                 for (i in 0 until jsonArray.length()) {
-                    val date = LocalDate.parse(jsonArray.getJSONObject(i).getString("date"))
+                    val jsonObj = jsonArray.getJSONObject(i)
+                    val date = LocalDate.parse(jsonObj.getString("date"))
+                    val holidayName = jsonObj.getString("name") // Extração do nome oficial
+
                     val existing = repository.getWorkDaySync(date)
                     if (existing == null) {
-                        repository.insert(WorkDay(date = date, isHolidayOrOffDay = true))
+                        repository.insert(WorkDay(
+                            date = date, 
+                            isHolidayOrOffDay = true, 
+                            holidayName = holidayName
+                        ))
                         count++
                     } else if (!existing.isHolidayOrOffDay) {
-                        repository.insert(existing.copy(isHolidayOrOffDay = true))
+                        repository.insert(existing.copy(
+                            isHolidayOrOffDay = true, 
+                            holidayName = holidayName
+                        ))
                         count++
                     }
                 }
@@ -262,7 +278,9 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             } else _importStatus.postValue("Falha ao conectar: Erro ${connection.responseCode}")
         } catch (e: Exception) {
             _importStatus.postValue("Falha ao conectar: ${e.localizedMessage}")
-        } finally { connection?.disconnect() }
+        } finally {
+            connection?.disconnect()
+        }
     }
 
     fun importCsv(uri: Uri) = viewModelScope.launch {
