@@ -10,6 +10,7 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 2.3.0    Jun/2026    Walter R. C.    Implementação da soma corrente (Running Total) no saldo mensal.
  * 2.1.6    Jun/2026    Walter R. C.    Correção do bug de clique nos seletores de mês e reatividade.
  * 2.1.0    Jun/2026    Walter R. C.    Criação da tela de auditoria mensal detalhada.
  */
@@ -38,6 +39,9 @@ class AuditMonthlyActivity : AppCompatActivity() {
     private val viewModel: WorkViewModel by viewModels()
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM 'de' yyyy", Locale("pt", "BR"))
     private var auditDate: LocalDate = LocalDate.now()
+
+    // Wrapper movido para fora do Adapter para evitar erro de aninhamento em inner classes
+    data class AuditItem(val day: WorkDay, val runningBalance: Long)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,11 +99,23 @@ class AuditMonthlyActivity : AppCompatActivity() {
     }
 
     inner class AuditAdapter(private val onClick: (WorkDay) -> Unit) : RecyclerView.Adapter<AuditAdapter.ViewHolder>() {
-        private var items = listOf<WorkDay>()
+        
+        private var items = listOf<AuditItem>()
         private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
         fun submitList(newList: List<WorkDay>) {
-            items = newList
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this@AuditMonthlyActivity)
+            val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L
+            val dailyGoalMinutes = workHours * 60
+
+            var accumulator = 0L
+            items = newList.map { day ->
+                val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
+                val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
+                val worked = day.calculateTotalMinutes()
+                accumulator += (worked - effectiveGoal)
+                AuditItem(day, accumulator)
+            }
             notifyDataSetChanged()
         }
 
@@ -115,7 +131,8 @@ class AuditMonthlyActivity : AppCompatActivity() {
         override fun getItemCount() = items.size
 
         inner class ViewHolder(private val itemBinding: ItemAuditDayBinding) : RecyclerView.ViewHolder(itemBinding.root) {
-            fun bind(day: WorkDay) {
+            fun bind(item: AuditItem) {
+                val day = item.day
                 val dayOfWeek = day.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
                 itemBinding.tvDayDate.text = "${day.date.format(DateTimeFormatter.ofPattern("dd/MM"))} - $dayOfWeek"
 
@@ -135,13 +152,20 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 itemBinding.tvDayGoal.text = if (day.isHolidayOrOffDay) "Meta: 00h 00m - ${day.holidayName ?: "Folga/Feriado"}" 
                                              else String.format("Meta: %02dh %02dm", effectiveGoal / 60, effectiveGoal % 60)
 
+                // Saldo do dia
                 val worked = day.calculateTotalMinutes()
                 val balance = worked - effectiveGoal
                 val absBalance = Math.abs(balance)
                 val sign = if (balance >= 0) "+" else "-"
-                
                 itemBinding.tvDayBalance.text = String.format("%s%02dh %02dm", sign, absBalance / 60, absBalance % 60)
                 itemBinding.tvDayBalance.setTextColor(if (balance >= 0) Color.parseColor("#66BB6A") else Color.parseColor("#FFA726"))
+
+                // Saldo Acumulado (Running Total)
+                val acc = item.runningBalance
+                val absAcc = Math.abs(acc)
+                val accSign = if (acc >= 0) "+" else "-"
+                itemBinding.tvAccumulatedRunningBalance.text = String.format("Acumulado: %s%02dh %02dm", accSign, absAcc / 60, absAcc % 60)
+                itemBinding.tvAccumulatedRunningBalance.setTextColor(if (acc >= 0) Color.parseColor("#81C784") else Color.parseColor("#FFA726"))
 
                 itemBinding.root.setOnClickListener { onClick(day) }
             }

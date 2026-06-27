@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">Controle de ponto</string>
     <string name="btn_today_desc">Ir para hoje</string>
+    <string name="dialog_clock_adjust_title">Ajuste de Horário</string>
+    <string name="dialog_clock_adjust_subtitle">Ajuste os minutos antes de registrar</string>
+    <string name="desc_minus_minutes">Diminuir minutos</string>
+    <string name="desc_plus_minutes">Aumentar minutos</string>
+    <string name="btn_cancel">Cancelar</string>
+    <string name="btn_confirm_punch">Confirmar Registro</string>
 </resources>

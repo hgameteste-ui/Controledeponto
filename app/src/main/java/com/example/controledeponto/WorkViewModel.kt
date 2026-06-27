@@ -20,6 +20,7 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 2.2.0    Jun/2026    Walter R. C.    Ajuste no punchClock para suportar registro com horário customizado.
  * 2.1.6    Jun/2026    Walter R. C.    Adição de changeAuditMonth para suporte à navegação reativa.
  * 2.1.5    Jun/2026    Walter R. C.    Refatoração da Auditoria para suportar navegação livre entre meses.
  * 2.1.0    Jun/2026    Walter R. C.    Suporte à tela de auditoria detalhada (AuditMonthlyActivity).
@@ -309,15 +310,15 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDate(date: LocalDate) { _selectedDate.value = date }
 
-    fun punchClock() = viewModelScope.launch {
+    fun punchClock(customTime: LocalTime? = null) = viewModelScope.launch {
         val date = _selectedDate.value ?: LocalDate.now()
-        val now = LocalTime.now()
+        val timeToRegister = customTime ?: LocalTime.now()
         val current = repository.getWorkDaySync(date) ?: WorkDay(date)
         val updated = when {
-            current.clockIn == null -> current.copy(clockIn = now)
-            current.breakStart == null -> current.copy(breakStart = now)
-            current.breakEnd == null -> current.copy(breakEnd = now)
-            current.clockOut == null -> current.copy(clockOut = now)
+            current.clockIn == null -> current.copy(clockIn = timeToRegister)
+            current.breakStart == null -> current.copy(breakStart = timeToRegister)
+            current.breakEnd == null -> current.copy(breakEnd = timeToRegister)
+            current.clockOut == null -> current.copy(clockOut = timeToRegister)
             else -> current
         }
         repository.insert(updated)

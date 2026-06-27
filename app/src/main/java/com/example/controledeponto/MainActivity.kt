@@ -18,6 +18,7 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 2.2.0    Jun/2026    Walter R. C.    Implementação do diálogo de ajuste fino de minutos antes do registro definitivo.
  * 2.1.0    Jun/2026    Walter R. C.    Integração com a tela de auditoria mensal; suporte à navegação 
  *                                      via Intent para carregamento de datas específicas.
  * 1.9.9    Jun/2026    Walter R. C.    Refatoração do painel de progresso para exibir o saldo acumulado 
@@ -35,8 +36,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -46,6 +51,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
 import com.example.controledeponto.databinding.ActivityMainBinding
+import com.example.controledeponto.databinding.DialogClockAdjustBinding
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -104,7 +110,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        binding.btnPunch.setOnClickListener { viewModel.punchClock() }
+        binding.btnPunch.setOnClickListener { showClockAdjustDialog() }
         binding.tvDate.setOnClickListener { showDatePicker() }
         binding.tvDate.setOnLongClickListener {
             showHolidayDialog(viewModel.selectedWorkDay.value)
@@ -119,6 +125,79 @@ class MainActivity : AppCompatActivity() {
             viewModel.setDate(current.plusDays(1))
         }
         binding.btnToday.setOnClickListener { viewModel.setDate(LocalDate.now()) }
+    }
+
+    private fun showClockAdjustDialog() {
+        val dialogBinding = DialogClockAdjustBinding.inflate(LayoutInflater.from(this))
+        var adjustedTime = LocalTime.now()
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogBinding.root)
+            .setCancelable(true)
+            .create()
+
+        fun updateTimeDisplay() {
+            dialogBinding.tvAdjustedTime.text = adjustedTime.format(timeFormatter)
+        }
+
+        updateTimeDisplay()
+
+        val handler = Handler(Looper.getMainLooper())
+        var repeatAction: Runnable? = null
+
+        fun stopRepeating() {
+            repeatAction?.let { handler.removeCallbacks(it) }
+            repeatAction = null
+        }
+
+        fun startRepeating(isIncrement: Boolean) {
+            stopRepeating()
+            repeatAction = object : Runnable {
+                override fun run() {
+                    adjustedTime = if (isIncrement) adjustedTime.plusMinutes(5) else adjustedTime.minusMinutes(5)
+                    updateTimeDisplay()
+                    handler.postDelayed(this, 150)
+                }
+            }
+            handler.postDelayed(repeatAction!!, 500)
+        }
+
+        dialogBinding.btnPlus.setOnClickListener {
+            adjustedTime = adjustedTime.plusMinutes(1)
+            updateTimeDisplay()
+        }
+
+        dialogBinding.btnPlus.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> startRepeating(true)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> stopRepeating()
+            }
+            false
+        }
+
+        dialogBinding.btnMinus.setOnClickListener {
+            adjustedTime = adjustedTime.minusMinutes(1)
+            updateTimeDisplay()
+        }
+
+        dialogBinding.btnMinus.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> startRepeating(false)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> stopRepeating()
+            }
+            false
+        }
+
+        dialogBinding.btnConfirm.setOnClickListener {
+            viewModel.punchClock(adjustedTime)
+            dialog.dismiss()
+        }
+
+        dialogBinding.btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
     }
 
     private fun showHolidayDialog(workDay: WorkDay?) {
