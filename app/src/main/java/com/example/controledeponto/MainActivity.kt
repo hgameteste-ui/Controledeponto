@@ -7,7 +7,7 @@
  * Atividade principal da aplicação que gerencia o fluxo de controle de ponto diário, 
  * mensal e trimestral. Estabelece os vínculos de observação (Observers) com o [WorkViewModel], 
  * manipula componentes visuais via View Binding e gerencia ações da barra de menu superior 
- * (histórico, configurações e rotinas de backup/importação via arquivos CSV).
+ * (histórico, configurações, rotinas de backup e sincronização manual de feriados públicos).
  *
  * Funcionalidades da Interface:
  * 1. Alteração Dinâmica de Datas: Navegação entre dias anteriores, posteriores e atalho para o dia atual.
@@ -18,13 +18,13 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 1.8.9    Jun/2026    Walter R. C.    Adição de ação manual na Toolbar para sincronizar feriados do ano
+ *                                      via BrasilAPI com base na data em exibição na UI.
  * 1.8.6    Jun/2026    Walter R. C.    Implementação de clique longo na data para alternar Feriado/Folga.
  * 1.8.5    Jun/2026    Walter R. C.    Integração visual com o novo campo [isHolidayOrOffDay],
  *                                      sanando a cobrança de horas em feriados e folgas na interface.
  * 1.8.4    Jun/2026    Walter R. C.    Ajuste no método updateStats para extrair a data do ViewModel,
  *                                      zerando a meta em fins de semana e sanando o bug de -08h 00m.
- * 1.8.1    Jun/2026    Walter R. C.    Tx. updateStats para permitir formatação de saldos negativos.
- * 1.8.0    Mai/2026    Walter R. C.    Implementação do motor de predição de horários de saída.
  */
 
 package com.example.controledeponto
@@ -74,7 +74,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
         setSupportActionBar(binding.toolbar)
 
         setupObservers()
@@ -91,60 +90,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        binding.btnPunch.setOnClickListener {
-            viewModel.punchClock()
-        }
-
-        binding.tvDate.setOnClickListener {
-            showDatePicker()
-        }
-
-        // NOVO: Clique longo para marcar Feriado/Folga
+        binding.btnPunch.setOnClickListener { viewModel.punchClock() }
+        binding.tvDate.setOnClickListener { showDatePicker() }
         binding.tvDate.setOnLongClickListener {
             showHolidayDialog(viewModel.selectedWorkDay.value)
             true
         }
-
         binding.btnPreviousDay.setOnClickListener {
             val current = viewModel.selectedDate.value ?: LocalDate.now()
             viewModel.setDate(current.minusDays(1))
         }
-
         binding.btnNextDay.setOnClickListener {
             val current = viewModel.selectedDate.value ?: LocalDate.now()
             viewModel.setDate(current.plusDays(1))
         }
-
-        binding.btnToday.setOnClickListener {
-            viewModel.setDate(LocalDate.now())
-        }
+        binding.btnToday.setOnClickListener { viewModel.setDate(LocalDate.now()) }
     }
 
-    /**
-     * Exibe um diálogo para marcar ou desmarcar o dia selecionado como Feriado ou Folga.
-     * @param workDay O registro do dia atual (pode ser nulo se não houver registros no banco).
-     */
     private fun showHolidayDialog(workDay: WorkDay?) {
         val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
-        // Se o dia não existe no banco, criamos um novo objeto com a data selecionada
         val currentWorkDay = workDay ?: WorkDay(date = selectedDate)
-        val isCurrentlyHoliday = currentWorkDay.isHolidayOrOffDay
-
-        val message = if (isCurrentlyHoliday) {
-            "Deseja remover a marcação de Feriado/Folga deste dia?"
-        } else {
-            "Deseja marcar este dia como Feriado/Folga?"
-        }
+        val isHoliday = currentWorkDay.isHolidayOrOffDay
+        val message = if (isHoliday) "Deseja remover a marcação de Feriado/Folga?" else "Deseja marcar este dia como Feriado/Folga?"
 
         AlertDialog.Builder(this)
             .setTitle("Controle de Ponto")
             .setMessage(message)
             .setPositiveButton("Confirmar") { _, _ ->
-                val updatedWorkDay = currentWorkDay.copy(isHolidayOrOffDay = !isCurrentlyHoliday)
-                viewModel.updateWorkDay(updatedWorkDay)
+                viewModel.updateWorkDay(currentWorkDay.copy(isHolidayOrOffDay = !isHoliday))
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+            .setNegativeButton("Cancelar", null).show()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -154,38 +129,29 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_history -> {
-                startActivity(Intent(this, HistoryActivity::class.java))
+            R.id.action_history -> { startActivity(Intent(this, HistoryActivity::class.java)); true }
+            R.id.action_sync_holidays -> {
+                // Sincroniza usando o ano do dia atualmente ativo na interface
+                val year = (viewModel.selectedDate.value ?: LocalDate.now()).year
+                viewModel.fetchAndSyncHolidays(year)
                 true
             }
             R.id.action_backup -> {
                 val date = viewModel.selectedDate.value ?: LocalDate.now()
-                val fileName = "backup_ponto_${date.monthValue}_${date.year}.csv"
-                backupCsvLauncher.launch(fileName)
+                backupCsvLauncher.launch("backup_ponto_${date.monthValue}_${date.year}.csv")
                 true
             }
-            R.id.action_settings -> {
-                startActivity(Intent(this, SettingsActivity::class.java))
-                true
-            }
-            R.id.action_import -> {
-                importCsvLauncher.launch("*/*")
-                true
-            }
+            R.id.action_settings -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
+            R.id.action_import -> { importCsvLauncher.launch("*/*"); true }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
     private fun setupObservers() {
         viewModel.selectedDate.observe(this) { date ->
-            val formattedDate = date.format(dateFormatter)
-            binding.tvDate.text = formattedDate.replaceFirstChar { it.uppercase() }
-
-            if (date == LocalDate.now()) {
-                binding.tvDate.setTextColor(resources.getColor(R.color.purple_500, theme))
-            } else {
-                binding.tvDate.setTextColor(resources.getColor(android.R.color.holo_orange_dark, theme))
-            }
+            binding.tvDate.text = date.format(dateFormatter).replaceFirstChar { it.uppercase() }
+            val color = if (date == LocalDate.now()) R.color.purple_500 else android.R.color.holo_orange_dark
+            binding.tvDate.setTextColor(resources.getColor(color, theme))
             updateToolbarSummary()
         }
 
@@ -194,13 +160,29 @@ class MainActivity : AppCompatActivity() {
             binding.tvBreakStart.text = workDay?.breakStart?.format(timeFormatter) ?: "--:--"
             binding.tvBreakEnd.text = workDay?.breakEnd?.format(timeFormatter) ?: "--:--"
             binding.tvClockOut.text = workDay?.clockOut?.format(timeFormatter) ?: "--:--"
-
-            updateStats(workDay)
-            updateButtonUI(workDay)
-            setupManualEdits(workDay)
+            updateStats(workDay); updateButtonUI(workDay); setupManualEdits(workDay)
         }
 
         viewModel.monthlyBalanceMinutes.observe(this) { updateToolbarSummary() }
+        viewModel.monthlyOvertimeMinutes.observe(this) { overtimeMinutes ->
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
+            val goalMinutes = monthlyGoalHours * 60L
+
+            val hours = overtimeMinutes / 60
+            val mins = overtimeMinutes % 60
+            binding.tvMonthlyTotal.text = String.format(Locale.getDefault(), "%02dh %02dm", hours, mins)
+            binding.progressMonthly.max = goalMinutes.toInt()
+            binding.progressMonthly.progress = overtimeMinutes.toInt().coerceAtMost(goalMinutes.toInt())
+
+            val remainingMinutes = (goalMinutes - overtimeMinutes).coerceAtLeast(0)
+            binding.tvMonthlyRemaining.text = if (remainingMinutes > 0) {
+                String.format(Locale.getDefault(), "Faltam %dh %02dm para a meta de %dh", remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours)
+            } else {
+                "Meta mensal batida! 🎉"
+            }
+            updateToolbarSummary()
+        }
 
         viewModel.quarterlyMonthlyOvertime.observe(this) { monthlyList ->
             binding.layoutQuarterlyMonths.removeAllViews()
@@ -249,34 +231,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.monthlyOvertimeMinutes.observe(this) { overtimeMinutes ->
-            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-            val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
-            val goalMinutes = monthlyGoalHours * 60L
-
-            val hours = overtimeMinutes / 60
-            val mins = overtimeMinutes % 60
-            val totalStr = String.format(Locale.getDefault(), "%02dh %02dm", hours, mins)
-
-            binding.tvMonthlyTotal.text = totalStr
-            binding.progressMonthly.max = goalMinutes.toInt()
-            binding.progressMonthly.progress = overtimeMinutes.toInt().coerceAtMost(goalMinutes.toInt())
-
-            val remainingMinutes = (goalMinutes - overtimeMinutes).coerceAtLeast(0)
-            if (remainingMinutes > 0) {
-                binding.tvMonthlyRemaining.text = String.format(Locale.getDefault(), "Faltam %dh %02dm para a meta de %dh", remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours)
-            } else {
-                binding.tvMonthlyRemaining.text = "Meta mensal batida! 🎉"
-            }
-
-            updateToolbarSummary()
-        }
-
         viewModel.suggestedDailyOvertimeMinutes.observe(this) { minutes ->
             val hours = minutes / 60
             val mins = minutes % 60
-            binding.tvSuggestedDaily.text = String.format(Locale.getDefault(),
-                "Sugestão de extras/dia: %02dh %02dm", hours, mins)
+            binding.tvSuggestedDaily.text = String.format(Locale.getDefault(), "Sugestão de extras/dia: %02dh %02dm", hours, mins)
         }
 
         viewModel.extrapolatedOvertimeMinutes.observe(this) { minutes ->
@@ -284,8 +242,7 @@ class MainActivity : AppCompatActivity() {
             val hours = absMinutes / 60
             val mins = absMinutes % 60
             val sign = if (minutes >= 0) "+" else "-"
-            binding.tvExtrapolatedOvertime.text = String.format(Locale.getDefault(),
-                "Projeção final do mês: %s%02dh %02dm", sign, hours, mins)
+            binding.tvExtrapolatedOvertime.text = String.format(Locale.getDefault(), "Projeção final do mês: %s%02dh %02dm", sign, hours, mins)
         }
 
         viewModel.monthlyBusinessDays.observe(this) { total ->
@@ -300,11 +257,8 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.importStatus.observe(this) { status ->
             status?.let {
-                AlertDialog.Builder(this)
-                    .setTitle("Controle de Ponto")
-                    .setMessage(it)
-                    .setPositiveButton("OK") { _, _ -> viewModel.clearImportStatus() }
-                    .show()
+                AlertDialog.Builder(this).setTitle("Controle de Ponto").setMessage(it)
+                    .setPositiveButton("OK") { _, _ -> viewModel.clearImportStatus() }.show()
             }
         }
     }
@@ -326,13 +280,8 @@ class MainActivity : AppCompatActivity() {
         val eMins = overtimeMinutes % 60
         val extrasStr = String.format(Locale.getDefault(), "%02dh %02dm", eHours, eMins)
 
-        val percentage = if (goalMinutes > 0) {
-            (overtimeMinutes.toDouble() / goalMinutes * 100).toInt()
-        } else 0
-
-        binding.tvToolbarMonthlyTotal.text = String.format(Locale.getDefault(),
-            "Saldo: %s | Extras: %s | Meta: %d%%",
-            balanceStr, extrasStr, percentage)
+        val percentage = if (goalMinutes > 0) (overtimeMinutes.toDouble() / goalMinutes * 100).toInt() else 0
+        binding.tvToolbarMonthlyTotal.text = String.format(Locale.getDefault(), "Saldo: %s | Extras: %s | Meta: %d%%", balanceStr, extrasStr, percentage)
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
@@ -360,28 +309,20 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.tvClockIn.setOnClickListener(clickListener)
-        binding.lblClockIn.setOnClickListener(clickListener)
-        binding.tvBreakStart.setOnClickListener(clickListener)
-        binding.lblBreakStart.setOnClickListener(clickListener)
-        binding.tvBreakEnd.setOnClickListener(clickListener)
-        binding.lblBreakEnd.setOnClickListener(clickListener)
-        binding.tvClockOut.setOnClickListener(clickListener)
-        binding.lblClockOut.setOnClickListener(clickListener)
+        binding.tvClockIn.setOnClickListener(clickListener); binding.lblClockIn.setOnClickListener(clickListener)
+        binding.tvBreakStart.setOnClickListener(clickListener); binding.lblBreakStart.setOnClickListener(clickListener)
+        binding.tvBreakEnd.setOnClickListener(clickListener); binding.lblBreakEnd.setOnClickListener(clickListener)
+        binding.tvClockOut.setOnClickListener(clickListener); binding.lblClockOut.setOnClickListener(clickListener)
     }
 
     private fun showTimePicker(currentTime: LocalTime?, onTimeSelected: (LocalTime) -> Unit) {
         val time = currentTime ?: LocalTime.now()
-        TimePickerDialog(this, { _, hour, minute ->
-            onTimeSelected(LocalTime.of(hour, minute))
-        }, time.hour, time.minute, true).show()
+        TimePickerDialog(this, { _, hour, minute -> onTimeSelected(LocalTime.of(hour, minute)) }, time.hour, time.minute, true).show()
     }
 
     private fun showDatePicker() {
         val date = viewModel.selectedDate.value ?: LocalDate.now()
-        DatePickerDialog(this, { _, year, month, dayOfMonth ->
-            viewModel.setDate(LocalDate.of(year, month + 1, dayOfMonth))
-        }, date.year, date.monthValue - 1, date.dayOfMonth).show()
+        DatePickerDialog(this, { _, year, month, dayOfMonth -> viewModel.setDate(LocalDate.of(year, month + 1, dayOfMonth)) }, date.year, date.monthValue - 1, date.dayOfMonth).show()
     }
 
     private fun updateStats(workDay: WorkDay?) {
@@ -395,50 +336,33 @@ class MainActivity : AppCompatActivity() {
 
         val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
         val isToday = selectedDate == LocalDate.now()
-        val isWeekend = selectedDate.dayOfWeek == java.time.DayOfWeek.SATURDAY ||
-                selectedDate.dayOfWeek == java.time.DayOfWeek.SUNDAY
-
-        // Verifica a flag vinda do banco (se o dia existir)
+        val isWeekend = selectedDate.dayOfWeek == java.time.DayOfWeek.SATURDAY || selectedDate.dayOfWeek == java.time.DayOfWeek.SUNDAY
         val isHolidayOrOff = workDay?.isHolidayOrOffDay ?: false
 
         val totalWorked = workDay?.calculateTotalMinutes(isToday = isToday) ?: 0L
-        val hours = totalWorked / 60
-        val mins = totalWorked % 60
+        binding.tvTotalWorked.text = String.format(Locale.getDefault(), "%02dh %02dm", totalWorked / 60, totalWorked % 60)
 
-        binding.tvTotalWorked.text = String.format(Locale.getDefault(), "%02dh %02dm", hours, mins)
-
-        // REGRA DE META ATUALIZADA: Finais de semana, feriados ou hoje (sem marcações) recebem meta zero
-        val effectiveGoal = if (isWeekend || isHolidayOrOff || (isToday && workDay?.clockIn == null)) {
-            0L
-        } else {
-            targetMinutes
-        }
-
+        val effectiveGoal = if (isWeekend || isHolidayOrOff || (isToday && workDay?.clockIn == null)) 0L else targetMinutes
         val balanceMinutes = totalWorked - effectiveGoal
         val absBalance = Math.abs(balanceMinutes)
-        val bHours = absBalance / 60
-        val bMins = absBalance % 60
 
         val sign = when {
             balanceMinutes > 0 -> "+"
             balanceMinutes < 0 -> "-"
             else -> ""
         }
-        binding.tvDailyOvertime.text = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, bHours, bMins)
+        binding.tvDailyOvertime.text = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, absBalance / 60, absBalance % 60)
 
         binding.progressWork.max = targetMinutes.toInt()
         binding.progressWork.progress = totalWorked.toInt().coerceAtMost(targetMinutes.toInt())
 
         val remaining = (effectiveGoal - totalWorked).coerceAtLeast(0L)
-        val rHours = remaining / 60
-        val rMins = remaining % 60
         binding.tvRemaining.text = if (remaining > 0) {
-            String.format(Locale.getDefault(), "Faltam %02dh %02dm", rHours, rMins)
+            String.format(Locale.getDefault(), "Faltam %02dh %02dm", remaining / 60, remaining % 60)
         } else {
             if ((isWeekend || isHolidayOrOff) && totalWorked == 0L) "Folga / Feriado" else "Jornada concluída!"
         }
 
-        // Alertas de Notificação e Predição
         if (workDay != null) {
             if (workDay.breakStart != null) cancelNotification(2)
             if (workDay.breakEnd != null) cancelNotification(3)
@@ -448,9 +372,7 @@ class MainActivity : AppCompatActivity() {
             if (nextEvent != null) {
                 val (eventName, eventTime) = nextEvent
                 binding.tvPrediction.text = "$eventName Estimada: ${eventTime.format(timeFormatter)}"
-                if (isToday) {
-                    scheduleNotification(eventName, eventTime)
-                }
+                if (isToday) scheduleNotification(eventName, eventTime)
             } else {
                 binding.tvPrediction.text = if (workDay.clockOut != null) "Expediente encerrado" else "Saída Estimada: --:--"
             }
@@ -465,29 +387,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun scheduleNotification(type: String, time: LocalTime) {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(this, NotificationReceiver::class.java).apply {
-            putExtra("type", type)
-        }
-
+        val intent = Intent(this, NotificationReceiver::class.java).apply { putExtra("type", type) }
         val requestCode = when(type) {
             "Início do Intervalo" -> 2
             "Fim do Intervalo" -> 3
             "Saída" -> 4
             else -> 0
         }
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, requestCode, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
+        val pendingIntent = PendingIntent.getBroadcast(this, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, time.hour)
             set(Calendar.MINUTE, time.minute)
             set(Calendar.SECOND, 0)
-            add(Calendar.MINUTE, 15) // 15 minutos de tolerância
+            add(Calendar.MINUTE, 15)
         }
-
         if (calendar.timeInMillis > System.currentTimeMillis()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (alarmManager.canScheduleExactAlarms()) {
@@ -503,14 +416,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun cancelNotification(requestCode: Int) {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(this, NotificationReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, requestCode, intent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-        )
-        if (pendingIntent != null) {
-            alarmManager.cancel(pendingIntent)
-        }
+        val pendingIntent = PendingIntent.getBroadcast(this, requestCode, Intent(this, NotificationReceiver::class.java), PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
+        if (pendingIntent != null) alarmManager.cancel(pendingIntent)
     }
 
     private fun updateButtonUI(workDay: WorkDay?) {
