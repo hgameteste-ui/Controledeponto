@@ -20,9 +20,9 @@ android {
         // The target Android version for app behavior
         targetSdk = 35
         // Internal version number for updates
-        versionCode = 232
+        versionCode = 241
         // User-visible version name
-        versionName = "2.3.2"
+        versionName = "2.4.1"
 
         // Runner for instrumentation tests
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -74,12 +74,12 @@ dependencies {
     implementation(libs.androidx.activity.ktx)
     // Lifecycle components for ViewModel and LiveData
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
-    implementation(libs.androidx.lifecycle.livedata.ktx)
-    // Room persistence library for local database support
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
     // Preference library for settings screens
     implementation(libs.androidx.preference)
+
+    // Room database dependencies
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
     // KSP processor for Room
     ksp(libs.androidx.room.compiler)
 

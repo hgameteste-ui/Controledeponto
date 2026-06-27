@@ -18,12 +18,11 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 2.4.1    Jun/2026    Walter R. C.    Ajuste de visibilidade e alinhamento do botão de limpeza no diálogo.
+ * 2.4.0    Jun/2026    Walter R. C.    Implementação de botões de limpeza expressos ("X") no diálogo de ajuste.
  * 2.2.0    Jun/2026    Walter R. C.    Implementação do diálogo de ajuste fino de minutos antes do registro definitivo.
  * 2.1.0    Jun/2026    Walter R. C.    Integração com a tela de auditoria mensal; suporte à navegação 
  *                                      via Intent para carregamento de datas específicas.
- * 1.9.9    Jun/2026    Walter R. C.    Refatoração do painel de progresso para exibir o saldo acumulado 
- *                                      dos últimos 3 meses (rolling quarterly balance).
- * 1.9.8    Jun/2026    Walter R. C.    Remoção do bloco trimestral do painel principal para ganho de área útil.
  */
 
 package com.example.controledeponto
@@ -31,7 +30,6 @@ package com.example.controledeponto
 import android.app.AlarmManager
 import android.app.DatePickerDialog
 import android.app.PendingIntent
-import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -43,8 +41,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -110,7 +106,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        binding.btnPunch.setOnClickListener { showClockAdjustDialog() }
+        binding.btnPunch.setOnClickListener { 
+            showClockAdjustDialog(null) { time ->
+                if (time != null) viewModel.punchClock(time)
+            }
+        }
         binding.tvDate.setOnClickListener { showDatePicker() }
         binding.tvDate.setOnLongClickListener {
             showHolidayDialog(viewModel.selectedWorkDay.value)
@@ -127,9 +127,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnToday.setOnClickListener { viewModel.setDate(LocalDate.now()) }
     }
 
-    private fun showClockAdjustDialog() {
+    private fun showClockAdjustDialog(initialTime: LocalTime?, onConfirm: (LocalTime?) -> Unit) {
         val dialogBinding = DialogClockAdjustBinding.inflate(LayoutInflater.from(this))
-        var adjustedTime = LocalTime.now()
+        var adjustedTime: LocalTime? = initialTime ?: LocalTime.now()
         
         val dialog = AlertDialog.Builder(this)
             .setView(dialogBinding.root)
@@ -137,7 +137,19 @@ class MainActivity : AppCompatActivity() {
             .create()
 
         fun updateTimeDisplay() {
-            dialogBinding.tvAdjustedTime.text = adjustedTime.format(timeFormatter)
+            if (adjustedTime != null) {
+                dialogBinding.tvAdjustedTime.text = adjustedTime!!.format(timeFormatter)
+                dialogBinding.tvAdjustedTime.alpha = 1.0f
+                dialogBinding.btnPlus.isEnabled = true
+                dialogBinding.btnMinus.isEnabled = true
+            } else {
+                dialogBinding.tvAdjustedTime.text = "--:--"
+                dialogBinding.tvAdjustedTime.alpha = 0.5f
+                dialogBinding.btnPlus.isEnabled = false
+                dialogBinding.btnMinus.isEnabled = false
+            }
+            // Garante que o botão de limpar esteja sempre visível para permitir re-seleção se necessário
+            dialogBinding.btnClearTime.visibility = View.VISIBLE
         }
 
         updateTimeDisplay()
@@ -152,9 +164,10 @@ class MainActivity : AppCompatActivity() {
 
         fun startRepeating(isIncrement: Boolean) {
             stopRepeating()
+            if (adjustedTime == null) return
             repeatAction = object : Runnable {
                 override fun run() {
-                    adjustedTime = if (isIncrement) adjustedTime.plusMinutes(5) else adjustedTime.minusMinutes(5)
+                    adjustedTime = if (isIncrement) adjustedTime?.plusMinutes(5) else adjustedTime?.minusMinutes(5)
                     updateTimeDisplay()
                     handler.postDelayed(this, 150)
                 }
@@ -163,7 +176,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialogBinding.btnPlus.setOnClickListener {
-            adjustedTime = adjustedTime.plusMinutes(1)
+            if (adjustedTime == null) adjustedTime = LocalTime.now()
+            else adjustedTime = adjustedTime?.plusMinutes(1)
             updateTimeDisplay()
         }
 
@@ -176,7 +190,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialogBinding.btnMinus.setOnClickListener {
-            adjustedTime = adjustedTime.minusMinutes(1)
+            if (adjustedTime == null) adjustedTime = LocalTime.now()
+            else adjustedTime = adjustedTime?.minusMinutes(1)
             updateTimeDisplay()
         }
 
@@ -188,8 +203,13 @@ class MainActivity : AppCompatActivity() {
             false
         }
 
+        dialogBinding.btnClearTime.setOnClickListener {
+            adjustedTime = null
+            updateTimeDisplay()
+        }
+
         dialogBinding.btnConfirm.setOnClickListener {
-            viewModel.punchClock(adjustedTime)
+            onConfirm(adjustedTime)
             dialog.dismiss()
         }
 
@@ -359,7 +379,7 @@ class MainActivity : AppCompatActivity() {
                 else -> null
             }
 
-            showTimePicker(timeToEdit) { newTime ->
+            showClockAdjustDialog(timeToEdit) { newTime ->
                 val updated = when(view.id) {
                     R.id.tvClockIn, R.id.lblClockIn -> current.copy(clockIn = newTime)
                     R.id.tvBreakStart, R.id.lblBreakStart -> current.copy(breakStart = newTime)
@@ -375,11 +395,6 @@ class MainActivity : AppCompatActivity() {
         binding.tvBreakStart.setOnClickListener(clickListener); binding.lblBreakStart.setOnClickListener(clickListener)
         binding.tvBreakEnd.setOnClickListener(clickListener); binding.lblBreakEnd.setOnClickListener(clickListener)
         binding.tvClockOut.setOnClickListener(clickListener); binding.lblClockOut.setOnClickListener(clickListener)
-    }
-
-    private fun showTimePicker(currentTime: LocalTime?, onTimeSelected: (LocalTime) -> Unit) {
-        val time = currentTime ?: LocalTime.now()
-        TimePickerDialog(this, { _, hour, minute -> onTimeSelected(LocalTime.of(hour, minute)) }, time.hour, time.minute, true).show()
     }
 
     private fun showDatePicker() {
