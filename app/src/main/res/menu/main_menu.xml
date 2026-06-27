@@ -7,6 +7,10 @@
         android:icon="@android:drawable/ic_menu_sort_by_size"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/action_audit_month"
+        android:title="Auditar Lançamentos do Mês"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_manage_holidays"
         android:title="Gerenciar Feriados"
         app:showAsAction="never" />

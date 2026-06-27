@@ -18,15 +18,11 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 2.1.0    Jun/2026    Walter R. C.    Integração com a tela de auditoria mensal; suporte à navegação 
+ *                                      via Intent para carregamento de datas específicas.
  * 1.9.9    Jun/2026    Walter R. C.    Refatoração do painel de progresso para exibir o saldo acumulado 
  *                                      dos últimos 3 meses (rolling quarterly balance).
  * 1.9.8    Jun/2026    Walter R. C.    Remoção do bloco trimestral do painel principal para ganho de área útil.
- * 1.9.0    Jun/2026    Walter R. C.    Acesso à tela HolidaysConfigActivity via Toolbar.
- * 1.8.9    Jun/2026    Walter R. C.    Adição de ação manual na Toolbar para sincronizar feriados do ano
- *                                      via BrasilAPI com base na data em exibição na UI.
- * 1.8.6    Jun/2026    Walter R. C.    Implementação de clique longo na data para alternar Feriado/Folga.
- * 1.8.5    Jun/2026    Walter R. C.    Integração visual com o novo campo [isHolidayOrOffDay],
- *                                      sanando a cobrança de horas em feriados e folgas na interface.
  */
 
 package com.example.controledeponto
@@ -78,9 +74,25 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
+        handleIntent(intent)
         setupObservers()
         setupListeners()
         checkNotificationPermission()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        intent?.getStringExtra("SELECTED_DATE")?.let {
+            try {
+                viewModel.setDate(LocalDate.parse(it))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     private fun checkNotificationPermission() {
@@ -135,6 +147,10 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, QuarterlyStatementActivity::class.java))
                 true
             }
+            R.id.action_audit_month -> {
+                startActivity(Intent(this, AuditMonthlyActivity::class.java))
+                true
+            }
             R.id.action_manage_holidays -> {
                 startActivity(Intent(this, HolidaysConfigActivity::class.java))
                 true
@@ -174,7 +190,6 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.monthlyBalanceMinutes.observe(this) { updateToolbarSummary() }
         
-        // Atualizado para observar o saldo trimestral acumulado (rolling quarterly balance)
         viewModel.rollingQuarterlyBalanceMinutes.observe(this) { balanceMinutes ->
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160

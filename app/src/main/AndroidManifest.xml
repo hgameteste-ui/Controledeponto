@@ -48,6 +48,11 @@
             android:label="Extrato Trimestral"
             android:parentActivityName=".MainActivity" />
 
+        <activity
+            android:name=".AuditMonthlyActivity"
+            android:label="Auditoria Mensal"
+            android:parentActivityName=".MainActivity" />
+
         <receiver
             android:name=".NotificationReceiver"
             android:enabled="true"

@@ -20,12 +20,12 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 2.1.6    Jun/2026    Walter R. C.    Adição de changeAuditMonth para suporte à navegação reativa.
+ * 2.1.5    Jun/2026    Walter R. C.    Refatoração da Auditoria para suportar navegação livre entre meses.
+ * 2.1.0    Jun/2026    Walter R. C.    Suporte à tela de auditoria detalhada (AuditMonthlyActivity).
+ *                                      Adição do LiveData monthlyWorkDays para listagem cronológica.
  * 2.0.0    Jun/2026    Walter R. C.    Transição para o modelo de histórico móvel de 3 meses (rolling quarter)
  *                                      no extrato trimestral, abandonando o modelo de trimestre civil fixo.
- * 1.9.9    Jun/2026    Walter R. C.    Implementação da regra de saldo acumulado trimestral móvel (rolling quarter)
- *                                      no painel principal para visão consolidada do banco de horas.
- * 1.9.5    Jun/2026    Walter R. C.    Suporte ao armazenamento de descrições oficiais de feriados.
- * 1.9.0    Jun/2026    Walter R. C.    Exposição de holidaysList para suporte à nova tela HolidaysConfigActivity.
  */
 
 package com.example.controledeponto
@@ -68,6 +68,23 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     // Lista reativa de feriados para a HolidaysConfigActivity
     val holidaysList: LiveData<List<WorkDay>> = repository.getHolidays()
 
+    /**
+     * Lista de todos os dias registrados no mês selecionado,
+     * ordenados cronologicamente para a tela de auditoria.
+     */
+    val monthlyWorkDays: LiveData<List<WorkDay>> = MediatorLiveData<List<WorkDay>>().apply {
+        val update = {
+            val date = _selectedDate.value
+            val list = allWorkDays.value
+            if (date != null && list != null) {
+                value = list.filter { it.date.month == date.month && it.date.year == date.year }
+                    .sortedBy { it.date }
+            }
+        }
+        addSource(allWorkDays) { update() }
+        addSource(_selectedDate) { update() }
+    }
+
     val monthlyTotalMinutes: LiveData<Long> = MediatorLiveData<Long>().apply {
         addSource(allWorkDays) { list -> value = calculateTotal(list, _selectedDate.value) }
         addSource(_selectedDate) { date -> value = calculateTotal(allWorkDays.value, date) }
@@ -92,8 +109,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * NOVO v2.0.0: Lista de meses do trimestre móvel com seus saldos individuais.
-     * Utilizado na tela de Extrato Trimestral.
+     * Lista de meses do trimestre móvel com seus saldos individuais.
      */
     val rollingQuarterlyMonthsOvertime: LiveData<List<Pair<String, Long>>> = MediatorLiveData<List<Pair<String, Long>>>().apply {
         addSource(allWorkDays) { list -> value = calculateRollingQuarterlyMonths(list, _selectedDate.value) }
@@ -282,6 +298,13 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             result.add(monthName to monthTotal)
         }
         return result
+    }
+
+    /**
+     * Altera o mês de auditoria selecionado e dispara a atualização dos LiveDatas dependentes.
+     */
+    fun changeAuditMonth(year: Int, monthValue: Int) {
+        _selectedDate.value = LocalDate.of(year, monthValue, 1)
     }
 
     fun setDate(date: LocalDate) { _selectedDate.value = date }

@@ -20,9 +20,9 @@ android {
         // The target Android version for app behavior
         targetSdk = 35
         // Internal version number for updates
-        versionCode = 98
+        versionCode = 211
         // User-visible version name
-        versionName = "1.9.8"
+        versionName = "2.1.1"
 
         // Runner for instrumentation tests
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
