@@ -1,3 +1,13 @@
+/**
+ * Nome do Arquivo: WorkDay.kt
+ * Pacote: com.example.controledeponto
+ *
+ * Descrição:
+ * Entidade que representa um dia de trabalho no banco de dados Room.
+ * Contém os horários de entrada, pausa e saída, além de flags de controle
+ * para dias especiais como folgas e feriados.
+ */
+
 package com.example.controledeponto
 
 import androidx.room.Entity
@@ -12,12 +22,13 @@ data class WorkDay(
     val clockIn: LocalTime? = null,
     val breakStart: LocalTime? = null,
     val breakEnd: LocalTime? = null,
-    val clockOut: LocalTime? = null
+    val clockOut: LocalTime? = null,
+    val isHolidayOrOffDay: Boolean = false // NOVO CAMPO
 ) {
     fun calculateTotalMinutes(isToday: Boolean = false): Long {
         val start = clockIn ?: return 0L
         val now = LocalTime.now()
-        
+
         return if (breakStart != null) {
             val p1 = Duration.between(start, breakStart).toMinutes()
             val p2 = if (breakEnd != null) {
@@ -39,10 +50,6 @@ data class WorkDay(
         return Duration.between(start, end).toMinutes().coerceAtLeast(0)
     }
 
-    /**
-     * Calcula o próximo evento previsto e o horário.
-     * @return Pair(Nome do Evento, Horário Previsto)
-     */
     fun getNextPrediction(targetMinutes: Long, breakMinutes: Long): Pair<String, LocalTime>? {
         return when {
             clockIn == null -> null

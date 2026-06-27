@@ -2,27 +2,30 @@
  * Nome do Arquivo: WorkViewModel.kt
  * Pacote: com.example.controledeponto
  * Projeto: Controle de Ponto Eletrônico
- * 
+ *
  * Descrição:
  * ViewModel responsável por gerenciar as regras de negócio, cálculos de jornada de trabalho,
- * banco de horas líquido, projeções mensais e acúmulos trimestrais. Atua como intermediário 
+ * banco de horas líquido, projeções mensais e acúmulos trimestrais. Atua como intermediário
  * entre o repositório de dados (Room/SQLite) e a camada de interface do usuário (UI),
  * expondo estados reativos via LiveData e MediatorLiveData.
  *
  * Regras de Negócio Implementadas:
  * 1. Cálculo Líquido: Permite saldos diários e acumulados negativos (débitos de horas).
  * 2. Proteção de Dias Futuros: Evita a computação de metas para datas posteriores ao dia atual.
- * 3. Tratamento do Dia Corrente: Zera a meta diária para o dia de hoje caso o primeiro ponto 
+ * 3. Tratamento do Dia Corrente: Zera a meta diária para o dia de hoje caso o primeiro ponto
  *    ainda não tenha sido batido, evitando exibir saldos negativos falsos antes do expediente.
- * 4. Fins de Semana: Sábados e domingos possuem meta padrão de 0 minutos.
+ * 4. Fins de Semana e Folgas: Sábados, domingos ou dias explicitamente marcados com a flag
+ *    [isHolidayOrOffDay] possuem meta padrão de 0 minutos.
  *
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 1.8.5    Jun/2026    Walter R. C.    Ajuste nos métodos de cálculo para ignorar a meta diária
+ *                                      caso o dia seja sinalizado como feriado ou folga [isHolidayOrOffDay].
+ * 1.8.3    Jun/2026    Walter R. C.    Blindagem do método calculateOvertime para evitar vazamento
+ *                                      de minutos negativos no painel quando onlySurplus é true.
  * 1.8.1    Jun/2026    Walter R. C.    Refatoração dos métodos calculateQuarterly para suportar
  *                                      saldos negativos e inclusão de tratamento de faltas.
- * 1.8.0    Mai/2026    Walter R. C.    Correção na exibição visual das horas extras diárias.
- * 1.6.9    Abr/2026    Walter R. C.    Ajustes nos totalizadores do topo e cálculo percentual.
  */
 
 package com.example.controledeponto
@@ -196,18 +199,24 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                     it.date.year == targetDate.year &&
                     (!onlySurplus || it.clockIn != null) &&
                     !it.date.isAfter(now)
-        }.sumOf {
-            val worked = it.calculateTotalMinutes(isToday = it.date == now)
-            val isWeekend = it.date.dayOfWeek == DayOfWeek.SATURDAY || it.date.dayOfWeek == DayOfWeek.SUNDAY
+        }.sumOf { day ->
+            val worked = day.calculateTotalMinutes(isToday = day.date == now)
+            val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
 
-            val effectiveGoal = if (isWeekend || (it.date == now && it.clockIn == null)) {
+            // REGRA ATUALIZADA: Feriado/Folga ou Fim de Semana derruba a meta para 0
+            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null)) {
                 0L
             } else {
                 dailyGoalMinutes
             }
 
             val diff = worked - effectiveGoal
-            if (onlySurplus) Math.max(0L, diff) else diff
+
+            if (onlySurplus) {
+                diff.coerceAtLeast(0L)
+            } else {
+                diff
+            }
         }
     }
 
@@ -225,11 +234,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                     it.date.monthValue >= startMonth &&
                     it.date.monthValue <= selectedDate.monthValue &&
                     !it.date.isAfter(now)
-        }.sumOf {
-            val worked = it.calculateTotalMinutes(isToday = it.date == now)
-            val isWeekend = it.date.dayOfWeek == DayOfWeek.SATURDAY || it.date.dayOfWeek == DayOfWeek.SUNDAY
+        }.sumOf { day ->
+            val worked = day.calculateTotalMinutes(isToday = day.date == now)
+            val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
 
-            val effectiveGoal = if (isWeekend || (it.date == now && it.clockIn == null)) {
+            // REGRA ATUALIZADA: Considera isHolidayOrOffDay no acúmulo trimestral
+            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null)) {
                 0L
             } else {
                 dailyGoalMinutes
@@ -254,11 +264,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 it.date.year == selectedDate.year &&
                         it.date.monthValue == m &&
                         !it.date.isAfter(now)
-            }.sumOf {
-                val worked = it.calculateTotalMinutes(isToday = it.date == now)
-                val isWeekend = it.date.dayOfWeek == DayOfWeek.SATURDAY || it.date.dayOfWeek == DayOfWeek.SUNDAY
+            }.sumOf { day ->
+                val worked = day.calculateTotalMinutes(isToday = day.date == now)
+                val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
 
-                val effectiveGoal = if (isWeekend || (it.date == now && it.clockIn == null)) {
+                // REGRA ATUALIZADA: Considera isHolidayOrOffDay na separação mensal do gráfico
+                val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null)) {
                     0L
                 } else {
                     dailyGoalMinutes
@@ -339,7 +350,8 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                                     clockIn = clockIn,
                                     breakStart = parseTime(parts.getOrNull(2)),
                                     breakEnd = parseTime(parts.getOrNull(3)),
-                                    clockOut = parseTime(parts.getOrNull(4))
+                                    clockOut = parseTime(parts.getOrNull(4)),
+                                    isHolidayOrOffDay = false
                                 )
                                 repository.insert(workDay)
                                 count++

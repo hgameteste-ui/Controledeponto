@@ -18,10 +18,13 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
- * 1.8.1    Jun/2026    Walter R. C.    Correção no método updateStats para permitir a formatação
- *                                      e exibição correta de débitos/saldos diários negativos.
+ * 1.8.6    Jun/2026    Walter R. C.    Implementação de clique longo na data para alternar Feriado/Folga.
+ * 1.8.5    Jun/2026    Walter R. C.    Integração visual com o novo campo [isHolidayOrOffDay],
+ *                                      sanando a cobrança de horas em feriados e folgas na interface.
+ * 1.8.4    Jun/2026    Walter R. C.    Ajuste no método updateStats para extrair a data do ViewModel,
+ *                                      zerando a meta em fins de semana e sanando o bug de -08h 00m.
+ * 1.8.1    Jun/2026    Walter R. C.    Tx. updateStats para permitir formatação de saldos negativos.
  * 1.8.0    Mai/2026    Walter R. C.    Implementação do motor de predição de horários de saída.
- * 1.6.6    Mar/2026    Walter R. C.    Isolamento da tela dedicada de histórico de batidas.
  */
 
 package com.example.controledeponto
@@ -96,6 +99,12 @@ class MainActivity : AppCompatActivity() {
             showDatePicker()
         }
 
+        // NOVO: Clique longo para marcar Feriado/Folga
+        binding.tvDate.setOnLongClickListener {
+            showHolidayDialog(viewModel.selectedWorkDay.value)
+            true
+        }
+
         binding.btnPreviousDay.setOnClickListener {
             val current = viewModel.selectedDate.value ?: LocalDate.now()
             viewModel.setDate(current.minusDays(1))
@@ -109,6 +118,33 @@ class MainActivity : AppCompatActivity() {
         binding.btnToday.setOnClickListener {
             viewModel.setDate(LocalDate.now())
         }
+    }
+
+    /**
+     * Exibe um diálogo para marcar ou desmarcar o dia selecionado como Feriado ou Folga.
+     * @param workDay O registro do dia atual (pode ser nulo se não houver registros no banco).
+     */
+    private fun showHolidayDialog(workDay: WorkDay?) {
+        val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
+        // Se o dia não existe no banco, criamos um novo objeto com a data selecionada
+        val currentWorkDay = workDay ?: WorkDay(date = selectedDate)
+        val isCurrentlyHoliday = currentWorkDay.isHolidayOrOffDay
+
+        val message = if (isCurrentlyHoliday) {
+            "Deseja remover a marcação de Feriado/Folga deste dia?"
+        } else {
+            "Deseja marcar este dia como Feriado/Folga?"
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Controle de Ponto")
+            .setMessage(message)
+            .setPositiveButton("Confirmar") { _, _ ->
+                val updatedWorkDay = currentWorkDay.copy(isHolidayOrOffDay = !isCurrentlyHoliday)
+                viewModel.updateWorkDay(updatedWorkDay)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -357,20 +393,28 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvTarget.text = "Jornada: ${workHours}h | Pausa: ${breakHours}h"
 
-        val isToday = workDay?.date == LocalDate.now()
+        val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
+        val isToday = selectedDate == LocalDate.now()
+        val isWeekend = selectedDate.dayOfWeek == java.time.DayOfWeek.SATURDAY ||
+                selectedDate.dayOfWeek == java.time.DayOfWeek.SUNDAY
+
+        // Verifica a flag vinda do banco (se o dia existir)
+        val isHolidayOrOff = workDay?.isHolidayOrOffDay ?: false
+
         val totalWorked = workDay?.calculateTotalMinutes(isToday = isToday) ?: 0L
         val hours = totalWorked / 60
         val mins = totalWorked % 60
 
         binding.tvTotalWorked.text = String.format(Locale.getDefault(), "%02dh %02dm", hours, mins)
 
-        // CORREÇÃO DO SALDO DIÁRIO: Removido o .coerceAtLeast(0) para permitir saldos negativos reais (Débitos)
-        val balanceMinutes = if (isToday && workDay?.clockIn == null) {
-            0L // Evita exibir o débito da jornada antes do início do expediente de hoje
+        // REGRA DE META ATUALIZADA: Finais de semana, feriados ou hoje (sem marcações) recebem meta zero
+        val effectiveGoal = if (isWeekend || isHolidayOrOff || (isToday && workDay?.clockIn == null)) {
+            0L
         } else {
-            totalWorked - targetMinutes
+            targetMinutes
         }
 
+        val balanceMinutes = totalWorked - effectiveGoal
         val absBalance = Math.abs(balanceMinutes)
         val bHours = absBalance / 60
         val bMins = absBalance % 60
@@ -378,20 +422,20 @@ class MainActivity : AppCompatActivity() {
         val sign = when {
             balanceMinutes > 0 -> "+"
             balanceMinutes < 0 -> "-"
-            else -> "" // Evita strings limítrofes "+00h 00m" ou "-00h 00m"
+            else -> ""
         }
         binding.tvDailyOvertime.text = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, bHours, bMins)
 
         binding.progressWork.max = targetMinutes.toInt()
         binding.progressWork.progress = totalWorked.toInt().coerceAtMost(targetMinutes.toInt())
 
-        val remaining = (targetMinutes - totalWorked).coerceAtLeast(0)
+        val remaining = (effectiveGoal - totalWorked).coerceAtLeast(0L)
         val rHours = remaining / 60
         val rMins = remaining % 60
         binding.tvRemaining.text = if (remaining > 0) {
             String.format(Locale.getDefault(), "Faltam %02dh %02dm", rHours, rMins)
         } else {
-            "Jornada concluída!"
+            if ((isWeekend || isHolidayOrOff) && totalWorked == 0L) "Folga / Feriado" else "Jornada concluída!"
         }
 
         // Alertas de Notificação e Predição
@@ -411,7 +455,11 @@ class MainActivity : AppCompatActivity() {
                 binding.tvPrediction.text = if (workDay.clockOut != null) "Expediente encerrado" else "Saída Estimada: --:--"
             }
         } else {
-            binding.tvPrediction.text = if (isToday) "Aguardando primeira batida" else "Sem registros para este dia"
+            binding.tvPrediction.text = when {
+                isToday -> "Aguardando primeira batida"
+                isWeekend || isHolidayOrOff -> "Feriado ou final de semana"
+                else -> "Sem registros para este dia"
+            }
         }
     }
 
@@ -448,7 +496,7 @@ class MainActivity : AppCompatActivity() {
                     alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
                 }
             } else {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
             }
         }
     }
@@ -467,6 +515,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateButtonUI(workDay: WorkDay?) {
         val label = when {
+            workDay?.isHolidayOrOffDay == true && workDay.clockIn == null -> "FERIADO / FOLGA"
             workDay == null || workDay.clockIn == null -> "ENTRADA"
             workDay.breakStart == null -> "INÍCIO PAUSA"
             workDay.breakEnd == null -> "FIM PAUSA"
@@ -474,6 +523,6 @@ class MainActivity : AppCompatActivity() {
             else -> "CONCLUÍDO"
         }
         binding.btnPunch.text = label
-        binding.btnPunch.isEnabled = workDay?.clockOut == null
+        binding.btnPunch.isEnabled = workDay?.clockOut == null && workDay?.isHolidayOrOffDay != true
     }
 }
