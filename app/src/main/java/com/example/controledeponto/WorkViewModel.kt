@@ -9,24 +9,17 @@
  * entre o repositório de dados (Room/SQLite) e a camada de interface do usuário (UI),
  * expondo estados reativos via LiveData e MediatorLiveData.
  *
- * Regras de Negócio Implementadas:
- * 1. Cálculo Líquido: Permite saldos diários e acumulados negativos (débitos de horas).
- * 2. Proteção de Dias Futuros: Evita a computação de metas para datas posteriores ao dia atual.
- * 3. Tratamento do Dia Corrente: Zera a meta diária para o dia de hoje caso o primeiro ponto
- *    ainda não tenha sido batido, evitando exibir saldos negativos falsos antes do expediente.
- * 4. Fins de Semana e Folgas: Sábados, domingos ou dias explicitamente marcados com a flag
- *    [isHolidayOrOffDay] possuem meta padrão de 0 minutos.
- *
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
- * 2.2.0    Jun/2026    Walter R. C.    Ajuste no punchClock para suportar registro com horário customizado.
+ * 3.0.0    Jun/2026    Walter R. C.    Ecossistema de dados 3.0.0: Transição do modelo de 
+ *                                      relatórios simples para o motor de Backup Geral Total 
+ *                                      do banco de dados na nuvem (Google Drive via SAF).
+ *                                      Exportação unificada com métricas em minutos.
+ * 2.2.0    Jun/2026    Walter R. C.    Ajuste no punchClock para suporte a registros customizados.
  * 2.1.6    Jun/2026    Walter R. C.    Adição de changeAuditMonth para suporte à navegação reativa.
  * 2.1.5    Jun/2026    Walter R. C.    Refatoração da Auditoria para suportar navegação livre entre meses.
  * 2.1.0    Jun/2026    Walter R. C.    Suporte à tela de auditoria detalhada (AuditMonthlyActivity).
- *                                      Adição do LiveData monthlyWorkDays para listagem cronológica.
- * 2.0.0    Jun/2026    Walter R. C.    Transição para o modelo de histórico móvel de 3 meses (rolling quarter)
- *                                      no extrato trimestral, abandonando o modelo de trimestre civil fixo.
  */
 
 package com.example.controledeponto
@@ -40,8 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.DayOfWeek
@@ -50,6 +41,7 @@ import java.time.LocalTime
 import java.time.Month
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 class WorkViewModel(application: Application) : AndroidViewModel(application) {
@@ -166,6 +158,9 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _importStatus = MutableLiveData<String?>()
     val importStatus: LiveData<String?> = _importStatus
+
+    private val _isProcessing = MutableLiveData<Boolean>(false)
+    val isProcessing: LiveData<Boolean> = _isProcessing
 
     private fun calculateBusinessDays(date: LocalDate): Int {
         var count = 0
@@ -301,9 +296,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         return result
     }
 
-    /**
-     * Altera o mês de auditoria selecionado e dispara a atualização dos LiveDatas dependentes.
-     */
     fun changeAuditMonth(year: Int, monthValue: Int) {
         _selectedDate.value = LocalDate.of(year, monthValue, 1)
     }
@@ -312,7 +304,8 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     fun punchClock(customTime: LocalTime? = null) = viewModelScope.launch {
         val date = _selectedDate.value ?: LocalDate.now()
-        val timeToRegister = customTime ?: LocalTime.now()
+        // Garante que o registro ignore segundos e nanosegundos para evitar erros de truncamento no cálculo total
+        val timeToRegister = (customTime ?: LocalTime.now()).truncatedTo(ChronoUnit.MINUTES)
         val current = repository.getWorkDaySync(date) ?: WorkDay(date)
         val updated = when {
             current.clockIn == null -> current.copy(clockIn = timeToRegister)
@@ -326,9 +319,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateWorkDay(workDay: WorkDay) = viewModelScope.launch { repository.insert(workDay) }
 
-    /**
-     * Consome a BrasilAPI para buscar feriados do ano e sincronizar com o banco local.
-     */
     fun fetchAndSyncHolidays(year: Int) = viewModelScope.launch(Dispatchers.IO) {
         _importStatus.postValue("Sincronizando feriados de $year...")
         var count = 0
@@ -407,7 +397,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 val selectedDate = _selectedDate.value ?: LocalDate.now()
                 val list = repository.allWorkDays.value?.filter { it.date.month == selectedDate.month && it.date.year == selectedDate.year }?.sortedBy { it.date } ?: emptyList()
                 val builder = StringBuilder("Data;Entrada;Início Pausa;Fim Pausa;Saída;Total Trabalhado\n")
-                val tf = DateTimeFormatter.ofPattern("HH:mm"); val df = DateTimeFormatter.ofPattern("dd/MM/yy")
+                val tf = DateTimeFormatter.ofPattern("HH:mm"); val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
                 list.forEach {
                     val worked = it.calculateTotalMinutes(it.date == LocalDate.now())
                     builder.append("${it.date.format(df)};${it.clockIn?.format(tf) ?: ""};${it.breakStart?.format(tf) ?: ""};${it.breakEnd?.format(tf) ?: ""};${it.clockOut?.format(tf) ?: ""};${String.format("%02dh %02dm", worked/60, worked%60)}\n")
@@ -416,6 +406,72 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             }
             _importStatus.postValue("Backup realizado!")
         } catch (e: Exception) { _importStatus.postValue("Erro: ${e.message}") }
+    }
+
+    /**
+     * Motor de Backup Geral 3.0.0
+     * Exporta TODO o histórico do banco de dados em formato CSV unificado para nuvem.
+     * Colunas: Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;
+     * Horas Trabalhadas (Minutos);Meta (Minutos);Saldo Líquido do Dia (Minutos);Tipo (Útil/Folga/Feriado)
+     */
+    fun exportFullHistoryToDrive(uri: Uri) = viewModelScope.launch {
+        _isProcessing.value = true
+        _importStatus.postValue("Iniciando processamento da base de dados para Backup Geral...")
+        try {
+            withContext(Dispatchers.IO) {
+                // Busca absolutamente TODOS os registros sem filtros, ordenados cronologicamente
+                val allData = repository.getAllWorkDaysSync()
+                val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
+                val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L
+                val dailyGoalMinutes = workHours * 60
+
+                val tf = DateTimeFormatter.ofPattern("HH:mm")
+                val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+                val ptBr = Locale("pt", "BR")
+                
+                val builder = StringBuilder()
+                // Cabeçalhos claros conforme solicitado para a versão 3.0.0
+                builder.append("Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;" +
+                        "Horas Trabalhadas (Minutos);Meta (Minutos);Saldo Líquido do Dia (Minutos);Tipo (Útil/Folga/Feriado)\n")
+
+                allData.forEach { day ->
+                    val isToday = day.date == LocalDate.now()
+                    val totalMinutes = day.calculateTotalMinutes(isToday)
+                    val dayOfWeekName = day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)
+                    
+                    val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
+                    val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
+                    val balance = totalMinutes - effectiveGoal
+                    
+                    val tipo = when {
+                        day.isHolidayOrOffDay -> "Feriado/Folga"
+                        isWeekend -> "Final de Semana"
+                        else -> "Dia Útil"
+                    }
+
+                    builder.append("${day.date.format(df)};")
+                    builder.append("${dayOfWeekName.replaceFirstChar { it.uppercase() }};")
+                    builder.append("${day.clockIn?.format(tf) ?: ""};")
+                    builder.append("${day.breakStart?.format(tf) ?: ""};")
+                    builder.append("${day.breakEnd?.format(tf) ?: ""};")
+                    builder.append("${day.clockOut?.format(tf) ?: ""};")
+                    builder.append("$totalMinutes;")
+                    builder.append("$effectiveGoal;")
+                    builder.append("$balance;")
+                    builder.append("$tipo\n")
+                }
+
+                // Escrita garantida em UTF-8 para manter compatibilidade com acentuação
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { 
+                    it.write(builder.toString().toByteArray(Charsets.UTF_8)) 
+                }
+            }
+            _importStatus.postValue("Backup Geral Total enviado com sucesso!")
+        } catch (e: Exception) {
+            _importStatus.postValue("Erro no processamento do Backup: ${e.message}")
+        } finally {
+            _isProcessing.postValue(false)
+        }
     }
 
     fun clearImportStatus() { _importStatus.value = null }

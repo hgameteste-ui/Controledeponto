@@ -9,15 +9,12 @@
  * manipula componentes visuais via View Binding e gerencia ações da barra de menu superior 
  * (histórico, configurações, rotinas de backup e sincronização manual de feriados públicos).
  *
- * Funcionalidades da Interface:
- * 1. Alteração Dinâmica de Datas: Navegação entre dias anteriores, posteriores e atalho para o dia atual.
- * 2. Edição Manual Dinâmica: Permite clicar sobre os rótulos ou horários de ponto para abrir um dialog de ajuste.
- * 3. Sincronização de Saldos: Mostra valores de créditos ou débitos na barra de ferramentas e no sumário.
- * 4. Alarme Integrado: Comunica-se com o [AlarmManager] para agendar predições de intervalo e saída com tolerância.
- *
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 3.0.0    Jun/2026    Walter R. C.    Ecossistema 3.0.0: Transição para o motor de Backup 
+ *                                      Geral Total (CSV unificado) na nuvem via Google Drive (SAF).
+ *                                      Feedback visual moderno via SnackBar.
  * 2.4.1    Jun/2026    Walter R. C.    Ajuste de visibilidade e alinhamento do botão de limpeza no diálogo.
  * 2.4.0    Jun/2026    Walter R. C.    Implementação de botões de limpeza expressos ("X") no diálogo de ajuste.
  * 2.2.0    Jun/2026    Walter R. C.    Implementação do diálogo de ajuste fino de minutos antes do registro definitivo.
@@ -48,7 +45,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
 import com.example.controledeponto.databinding.ActivityMainBinding
 import com.example.controledeponto.databinding.DialogClockAdjustBinding
+import com.google.android.material.snackbar.Snackbar
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.*
@@ -59,6 +58,14 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: WorkViewModel by viewModels()
     private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy", Locale("pt", "BR"))
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+    // Launcher do SAF para salvar o backup unificado 3.0.0
+    private val driveExportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        uri?.let { 
+            viewModel.exportFullHistoryToDrive(it)
+            Snackbar.make(binding.root, "Iniciando upload do backup total...", Snackbar.LENGTH_SHORT).show()
+        }
+    }
 
     private val backupCsvLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri?.let { viewModel.exportCsv(it) }
@@ -148,7 +155,6 @@ class MainActivity : AppCompatActivity() {
                 dialogBinding.btnPlus.isEnabled = false
                 dialogBinding.btnMinus.isEnabled = false
             }
-            // Garante que o botão de limpar esteja sempre visível para permitir re-seleção se necessário
             dialogBinding.btnClearTime.visibility = View.VISIBLE
         }
 
@@ -242,6 +248,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_export_drive -> {
+                // Nome unificado conforme solicitado para o backup total 3.0.0
+                driveExportLauncher.launch("backup_geral_ponto_total.csv")
+                true
+            }
             R.id.action_quarterly_statement -> {
                 startActivity(Intent(this, QuarterlyStatementActivity::class.java))
                 true
@@ -339,8 +350,9 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.importStatus.observe(this) { status ->
             status?.let {
-                AlertDialog.Builder(this).setTitle("Controle de Ponto").setMessage(it)
-                    .setPositiveButton("OK") { _, _ -> viewModel.clearImportStatus() }.show()
+                // Feedback visual claro via Snackbar conforme solicitado na 3.0.0
+                Snackbar.make(binding.root, it, Snackbar.LENGTH_LONG).show()
+                viewModel.clearImportStatus()
             }
         }
     }

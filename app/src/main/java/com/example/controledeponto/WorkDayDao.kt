@@ -21,6 +21,9 @@ interface WorkDayDao {
     @Query("SELECT * FROM work_days ORDER BY date DESC")
     fun getAllWorkDays(): LiveData<List<WorkDay>>
 
+    @Query("SELECT * FROM work_days ORDER BY date ASC")
+    suspend fun getAllWorkDaysSync(): List<WorkDay>
+
     @Query("SELECT * FROM work_days WHERE isHolidayOrOffDay = 1 ORDER BY date ASC")
     fun getHolidays(): LiveData<List<WorkDay>>
 }

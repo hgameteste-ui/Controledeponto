@@ -25,6 +25,11 @@
         android:icon="@drawable/ic_history"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/action_export_drive"
+        android:title="Exportar Dados para o Google Drive"
+        android:icon="@android:drawable/ic_menu_save"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_backup"
         android:title="Backup Mensal"
         android:icon="@android:drawable/ic_menu_save"
