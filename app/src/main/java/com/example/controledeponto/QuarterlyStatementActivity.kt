@@ -46,12 +46,12 @@ class QuarterlyStatementActivity : AppCompatActivity() {
     }
 
     private fun setupObservers() {
-        // Atualizado v2.0.0: Observa a lista móvel de 3 meses (rolling quarter)
-        viewModel.rollingQuarterlyMonthsOvertime.observe(this) { monthlyList ->
+        // Correção: Observa quarterlyMonthlyOvertime para o extrato do trimestre calendário conforme solicitado
+        viewModel.quarterlyMonthlyOvertime.observe(this) { monthlyList ->
             binding.layoutQuarterlyMonths.removeAllViews()
             
             val titleView = TextView(this).apply {
-                text = "HISTÓRICO DOS ÚLTIMOS 3 MESES"
+                text = "HISTÓRICO DO TRIMESTRE ATUAL"
                 setTextColor(resources.getColor(android.R.color.holo_blue_light, theme))
                 textSize = 12f
                 setPadding(0, 0, 0, 24)
@@ -63,15 +63,15 @@ class QuarterlyStatementActivity : AppCompatActivity() {
             monthlyList.forEach { (month, minutes) ->
                 totalMinutes += minutes
                 val absMinutes = Math.abs(minutes)
-                val hours = minutes / 60
+                val hours = absMinutes / 60
                 val mins = absMinutes % 60
                 val sign = if (minutes >= 0) "+" else "-"
                 
                 val textView = TextView(this).apply {
-                    text = String.format(Locale.getDefault(), "%s: %s%02dh %02dm", month, sign, Math.abs(hours), mins)
+                    text = String.format(Locale.getDefault(), "%s: %s%02dh %02dm", month, sign, hours, mins)
                     textSize = 17f
-                    // Ajuste v2.0.1: Cor alterada para branco para garantir contraste no tema escuro
-                    setTextColor(resources.getColor(android.R.color.white, theme))
+                    // Correção: Alterado de 'white' para 'holo_blue_light' para garantir visibilidade em temas claros
+                    setTextColor(resources.getColor(android.R.color.holo_blue_light, theme))
                     setPadding(0, 12, 0, 12)
                 }
                 binding.layoutQuarterlyMonths.addView(textView)
@@ -87,12 +87,12 @@ class QuarterlyStatementActivity : AppCompatActivity() {
                 binding.layoutQuarterlyMonths.addView(separator)
 
                 val absTotal = Math.abs(totalMinutes)
-                val totalHours = totalMinutes / 60
+                val totalHours = absTotal / 60
                 val totalMins = absTotal % 60
                 val totalSign = if (totalMinutes >= 0) "+" else "-"
                 
                 val totalTextView = TextView(this).apply {
-                    text = String.format(Locale.getDefault(), "TOTAL ACUMULADO: %s%02dh %02dm", totalSign, Math.abs(totalHours), totalMins)
+                    text = String.format(Locale.getDefault(), "TOTAL ACUMULADO: %s%02dh %02dm", totalSign, totalHours, totalMins)
                     textSize = 20f
                     setTextColor(resources.getColor(android.R.color.holo_blue_light, theme))
                     setTypeface(null, android.graphics.Typeface.BOLD)

@@ -12,14 +12,12 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
- * 3.0.0    Jun/2026    Walter R. C.    Ecossistema de dados 3.0.0: Transição do modelo de 
- *                                      relatórios simples para o motor de Backup Geral Total 
- *                                      do banco de dados na nuvem (Google Drive via SAF).
- *                                      Exportação unificada com métricas em minutos.
- * 2.2.0    Jun/2026    Walter R. C.    Ajuste no punchClock para suporte a registros customizados.
- * 2.1.6    Jun/2026    Walter R. C.    Adição de changeAuditMonth para suporte à navegação reativa.
- * 2.1.5    Jun/2026    Walter R. C.    Refatoração da Auditoria para suportar navegação livre entre meses.
- * 2.1.0    Jun/2026    Walter R. C.    Suporte à tela de auditoria detalhada (AuditMonthlyActivity).
+ * 3.0.7    Jun/2026    Walter R. C.    Ajuste na notificação de contagem de registros (backupCountResult)
+ *                                      para garantir que a UI receba o total de registros salvos.
+ * 3.0.6    Jun/2026    Walter R. C.    Restauração do motor completo para exportar TODO o histórico
+ *                                      agora que a causa real do travamento (loop de LiveData) foi sanada.
+ * 3.0.5    Jun/2026    Walter R. C.    Inserção de logs detalhados e rastreamento robusto de fluxo
+ *                                      para identificar gargalos em tempo de execução no SAF.
  */
 
 package com.example.controledeponto
@@ -33,6 +31,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import java.io.BufferedWriter
+import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.DayOfWeek
@@ -58,13 +58,13 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     val allWorkDays: LiveData<List<WorkDay>> = repository.allWorkDays
 
-    // Lista reativa de feriados para a HolidaysConfigActivity
     val holidaysList: LiveData<List<WorkDay>> = repository.getHolidays()
 
-    /**
-     * Lista de todos os dias registrados no mês selecionado,
-     * ordenados cronologicamente para a tela de auditoria.
-     */
+    private val _backupCountResult = MutableLiveData<Int?>()
+    val backupCountResult: LiveData<Int?> = _backupCountResult
+
+    // ... (Mantidos os outros LiveData e métodos de cálculo conforme original)
+
     val monthlyWorkDays: LiveData<List<WorkDay>> = MediatorLiveData<List<WorkDay>>().apply {
         val update = {
             val date = _selectedDate.value
@@ -93,17 +93,11 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         addSource(_selectedDate) { date -> value = calculateOvertime(allWorkDays.value, date, onlySurplus = false) }
     }
 
-    /**
-     * Saldo acumulado do trimestre móvel (mês selecionado + 2 anteriores).
-     */
     val rollingQuarterlyBalanceMinutes: LiveData<Long> = MediatorLiveData<Long>().apply {
         addSource(allWorkDays) { list -> value = calculateRollingQuarterlyBalance(list, _selectedDate.value) }
         addSource(_selectedDate) { date -> value = calculateRollingQuarterlyBalance(allWorkDays.value, date) }
     }
 
-    /**
-     * Lista de meses do trimestre móvel com seus saldos individuais.
-     */
     val rollingQuarterlyMonthsOvertime: LiveData<List<Pair<String, Long>>> = MediatorLiveData<List<Pair<String, Long>>>().apply {
         addSource(allWorkDays) { list -> value = calculateRollingQuarterlyMonths(list, _selectedDate.value) }
         addSource(_selectedDate) { date -> value = calculateRollingQuarterlyMonths(allWorkDays.value, date) }
@@ -119,7 +113,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
             val monthlyGoalHours = prefs.getString("monthly_goal", "30")?.toLongOrNull() ?: 30L
             val quarterlyGoalMinutes = monthlyGoalHours * 3 * 60
-            
+
             if (remaining > 0) {
                 val neededExtraTotal = (quarterlyGoalMinutes - balance).coerceAtLeast(0L)
                 value = neededExtraTotal / remaining
@@ -161,6 +155,8 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isProcessing = MutableLiveData<Boolean>(false)
     val isProcessing: LiveData<Boolean> = _isProcessing
+
+    // ... (Mantidos os métodos auxiliares: calculateBusinessDays, calculateRemainingBusinessDays, calculateTotal, calculateOvertime, etc.)
 
     private fun calculateBusinessDays(date: LocalDate): Int {
         var count = 0
@@ -214,7 +210,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         val now = LocalDate.now()
         val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
         val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
-        
+
         val targetMonths = listOf(
             selectedDate,
             selectedDate.minusMonths(1),
@@ -236,7 +232,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         val now = LocalDate.now()
         val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
         val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
-        
+
         val targetMonths = listOf(
             selectedDate.minusMonths(2),
             selectedDate.minusMonths(1),
@@ -304,7 +300,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     fun punchClock(customTime: LocalTime? = null) = viewModelScope.launch {
         val date = _selectedDate.value ?: LocalDate.now()
-        // Garante que o registro ignore segundos e nanosegundos para evitar erros de truncamento no cálculo total
         val timeToRegister = (customTime ?: LocalTime.now()).truncatedTo(ChronoUnit.MINUTES)
         val current = repository.getWorkDaySync(date) ?: WorkDay(date)
         val updated = when {
@@ -338,14 +333,14 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                     val existing = repository.getWorkDaySync(date)
                     if (existing == null) {
                         repository.insert(WorkDay(
-                            date = date, 
-                            isHolidayOrOffDay = true, 
+                            date = date,
+                            isHolidayOrOffDay = true,
                             holidayName = holidayName
                         ))
                         count++
                     } else if (!existing.isHolidayOrOffDay) {
                         repository.insert(existing.copy(
-                            isHolidayOrOffDay = true, 
+                            isHolidayOrOffDay = true,
                             holidayName = holidayName
                         ))
                         count++
@@ -409,70 +404,71 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Motor de Backup Geral 3.0.0
-     * Exporta TODO o histórico do banco de dados em formato CSV unificado para nuvem.
-     * Colunas: Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;
-     * Horas Trabalhadas (Minutos);Meta (Minutos);Saldo Líquido do Dia (Minutos);Tipo (Útil/Folga/Feriado)
+     * Motor de Backup Geral Total 3.0.7
+     * Exporta o histórico e notifica a contagem total de registros processados via LiveData.
      */
-    fun exportFullHistoryToDrive(uri: Uri) = viewModelScope.launch {
-        _isProcessing.value = true
-        _importStatus.postValue("Iniciando processamento da base de dados para Backup Geral...")
+    fun exportFullHistoryToDrive(uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
+        _isProcessing.postValue(true)
+        _importStatus.postValue("Iniciando processamento assíncrono total da base de dados...")
+
         try {
-            withContext(Dispatchers.IO) {
-                // Busca absolutamente TODOS os registros sem filtros, ordenados cronologicamente
-                val allData = repository.getAllWorkDaysSync()
-                val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
-                val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L
-                val dailyGoalMinutes = workHours * 60
+            val allData = repository.getAllWorkDaysSync() ?: emptyList()
+            val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
+            val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L
+            val dailyGoalMinutes = workHours * 60
 
-                val tf = DateTimeFormatter.ofPattern("HH:mm")
-                val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-                val ptBr = Locale("pt", "BR")
-                
-                val builder = StringBuilder()
-                // Cabeçalhos claros conforme solicitado para a versão 3.0.0
-                builder.append("Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;" +
-                        "Horas Trabalhadas (Minutos);Meta (Minutos);Saldo Líquido do Dia (Minutos);Tipo (Útil/Folga/Feriado)\n")
+            val tf = DateTimeFormatter.ofPattern("HH:mm")
+            val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            val ptBr = Locale("pt", "BR")
 
-                allData.forEach { day ->
-                    val isToday = day.date == LocalDate.now()
-                    val totalMinutes = day.calculateTotalMinutes(isToday)
-                    val dayOfWeekName = day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)
-                    
-                    val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-                    val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
-                    val balance = totalMinutes - effectiveGoal
-                    
-                    val tipo = when {
-                        day.isHolidayOrOffDay -> "Feriado/Folga"
-                        isWeekend -> "Final de Semana"
-                        else -> "Dia Útil"
+            getApplication<Application>().contentResolver.openOutputStream(uri)?.use { outputStream ->
+                BufferedWriter(OutputStreamWriter(outputStream, Charsets.UTF_8)).use { writer ->
+                    writer.write("Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;" +
+                            "Horas Trabalhadas (Minutos);Meta (Minutos);Saldo Líquido do Dia (Minutos);Tipo (Útil/Folga/Feriado)\n")
+
+                    allData.forEach { day ->
+                        val isToday = day.date == LocalDate.now()
+                        val totalMinutes = day.calculateTotalMinutes(isToday)
+                        val dayOfWeekName = day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)
+
+                        val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
+                        val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
+                        val balance = totalMinutes - effectiveGoal
+
+                        val tipo = when {
+                            day.isHolidayOrOffDay -> "Feriado/Folga"
+                            isWeekend -> "Final de Semana"
+                            else -> "Dia Útil"
+                        }
+
+                        writer.write("${day.date.format(df)};" +
+                                "${dayOfWeekName.replaceFirstChar { it.uppercase() }};" +
+                                "${day.clockIn?.format(tf) ?: ""};" +
+                                "${day.breakStart?.format(tf) ?: ""};" +
+                                "${day.breakEnd?.format(tf) ?: ""};" +
+                                "${day.clockOut?.format(tf) ?: ""};" +
+                                "$totalMinutes;" +
+                                "$effectiveGoal;" +
+                                "$balance;" +
+                                "$tipo\n")
                     }
-
-                    builder.append("${day.date.format(df)};")
-                    builder.append("${dayOfWeekName.replaceFirstChar { it.uppercase() }};")
-                    builder.append("${day.clockIn?.format(tf) ?: ""};")
-                    builder.append("${day.breakStart?.format(tf) ?: ""};")
-                    builder.append("${day.breakEnd?.format(tf) ?: ""};")
-                    builder.append("${day.clockOut?.format(tf) ?: ""};")
-                    builder.append("$totalMinutes;")
-                    builder.append("$effectiveGoal;")
-                    builder.append("$balance;")
-                    builder.append("$tipo\n")
-                }
-
-                // Escrita garantida em UTF-8 para manter compatibilidade com acentuação
-                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { 
-                    it.write(builder.toString().toByteArray(Charsets.UTF_8)) 
+                    writer.flush()
                 }
             }
-            _importStatus.postValue("Backup Geral Total enviado com sucesso!")
+
+            // Notifica a quantidade salva para a Activity[cite: 1]
+            _backupCountResult.postValue(allData.size)
+            _importStatus.postValue("Backup Geral Total gerado com sucesso!")
+
         } catch (e: Exception) {
-            _importStatus.postValue("Erro no processamento do Backup: ${e.message}")
+            Log.e("PONTO_TRACK", "ERRO NO MOTOR DE BACKUP: ${e.message}", e)
+            _backupCountResult.postValue(0)
+            _importStatus.postValue("Erro ao processar Backup Geral: ${e.message}")
         } finally {
             _isProcessing.postValue(false)
         }
     }
 
+    fun clearBackupCountResult() { _backupCountResult.value = null }
     fun clearImportStatus() { _importStatus.value = null }
 }

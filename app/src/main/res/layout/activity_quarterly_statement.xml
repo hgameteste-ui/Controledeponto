@@ -1,4 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Nome do Arquivo: activity_quarterly_statement.xml
+    Projeto: Controle de Ponto Eletrônico
+
+    Descrição:
+    Layout da tela de extrato trimestral. Utiliza ConstraintLayout para estruturação base,
+    AppBarLayout para a barra de ferramentas superior e NestedScrollView para o conteúdo
+    dinâmico do histórico mensal, garantindo scroll em dispositivos menores.
+
+    Histórico de Modificações:
+    Versão   Data        Autor           Descrição
+    _________________________________________________________________________________________
+    3.0.8    Jun/2026    Walter R. C.    Ajuste de margens e padding para evitar sobreposição
+                                         da Status Bar e melhorar o alinhamento visual.
+    2.1.0    Jun/2026    Walter R. C.    Estruturação inicial com AppBarLayout e NestedScrollView.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -10,6 +26,7 @@
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:fitsSystemWindows="true"
         app:layout_constraintTop_toTopOf="parent">
 
         <com.google.android.material.appbar.MaterialToolbar
@@ -34,9 +51,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:paddingTop="32dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="16dp">
 
-            <!-- Dinamicamente preenchido -->
+            <!-- Conteúdo preenchido dinamicamente via QuarterlyStatementActivity -->
         </LinearLayout>
 
     </androidx.core.widget.NestedScrollView>

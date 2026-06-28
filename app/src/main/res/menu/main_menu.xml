@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
+
     <item
         android:id="@+id/action_quarterly_statement"
         android:title="Extrato Trimestral"
@@ -17,31 +18,29 @@
     <item
         android:id="@+id/action_sync_holidays"
         android:title="Sincronizar Feriados"
-        android:icon="@drawable/ic_sync"
         app:showAsAction="never" />
     <item
         android:id="@+id/action_history"
         android:title="Histórico"
         android:icon="@drawable/ic_history"
         app:showAsAction="ifRoom" />
+
+    <!-- Item Atualizado para o Backup Geral 3.0.0 -->
     <item
-        android:id="@+id/action_export_drive"
-        android:title="Exportar Dados para o Google Drive"
-        android:icon="@android:drawable/ic_menu_save"
+        android:id="@+id/action_trigger_backup_flow"
+        android:title="Fazer Backup Geral no Drive"
         app:showAsAction="never" />
+
     <item
         android:id="@+id/action_backup"
         android:title="Backup Mensal"
-        android:icon="@android:drawable/ic_menu_save"
         app:showAsAction="never" />
     <item
         android:id="@+id/action_import"
         android:title="Importar CSV"
-        android:icon="@android:drawable/ic_menu_upload"
         app:showAsAction="never" />
     <item
         android:id="@+id/action_settings"
         android:title="Configurações"
-        android:icon="@android:drawable/ic_menu_preferences"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="never" />
 </menu>

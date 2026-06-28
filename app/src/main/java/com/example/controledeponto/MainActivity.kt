@@ -4,22 +4,18 @@
  * Projeto: Controle de Ponto Eletrônico
  * 
  * Descrição:
- * Atividade principal da aplicação que gerencia o fluxo de controle de ponto diário, 
- * mensal e trimestral. Estabelece os vínculos de observação (Observers) com o [WorkViewModel], 
- * manipula componentes visuais via View Binding e gerencia ações da barra de menu superior 
- * (histórico, configurações, rotinas de backup e sincronização manual de feriados públicos).
+ * Atividade principal da aplicação que gerencia o fluxo de controle de ponto diário,
+ * mensal e trimestral. Estabelece os vínculos de observação (Observers) com o [WorkViewModel],
+ * manipula componentes visuais via View Binding e gerencia ações da barra de menu superior.
  *
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
- * 3.0.0    Jun/2026    Walter R. C.    Ecossistema 3.0.0: Transição para o motor de Backup 
- *                                      Geral Total (CSV unificado) na nuvem via Google Drive (SAF).
- *                                      Feedback visual moderno via SnackBar.
- * 2.4.1    Jun/2026    Walter R. C.    Ajuste de visibilidade e alinhamento do botão de limpeza no diálogo.
- * 2.4.0    Jun/2026    Walter R. C.    Implementação de botões de limpeza expressos ("X") no diálogo de ajuste.
- * 2.2.0    Jun/2026    Walter R. C.    Implementação do diálogo de ajuste fino de minutos antes do registro definitivo.
- * 2.1.0    Jun/2026    Walter R. C.    Integração com a tela de auditoria mensal; suporte à navegação 
- *                                      via Intent para carregamento de datas específicas.
+ * 3.0.7    Jun/2026    Walter R. C.    Atualizada UI para exibir contagem de registros salvos no backup.
+ * 3.0.6    Jun/2026    Walter R. C.    Adicionada cláusula de barreira reativa (count == null) para quebrar
+ *                                      o loop infinito e mitigar travamentos de UI de forma definitiva.
+ * 3.0.5    Jun/2026    Walter R. C.    Adicionado logs de interceptação no retorno do SAF (Activity Results)
+ *                                      para complementar o ecossistema de rastreamento.
  */
 
 package com.example.controledeponto
@@ -33,6 +29,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
@@ -59,11 +56,13 @@ class MainActivity : AppCompatActivity() {
     private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, dd/MM/yyyy", Locale("pt", "BR"))
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-    // Launcher do SAF para salvar o backup unificado 3.0.0
     private val driveExportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        uri?.let { 
-            viewModel.exportFullHistoryToDrive(it)
-            Snackbar.make(binding.root, "Iniciando upload do backup total...", Snackbar.LENGTH_SHORT).show()
+        if (uri != null) {
+            Log.d("PONTO_TRACK", "UI: O SAF retornou a Uri com sucesso. Iniciando exportação...")
+            binding.tvLastBackupStatus.text = "Nuvem: Realizando upload..."
+            viewModel.exportFullHistoryToDrive(uri)
+        } else {
+            Log.w("PONTO_TRACK", "UI: O usuário cancelou a seleção de diretório no SAF.")
         }
     }
 
@@ -87,6 +86,8 @@ class MainActivity : AppCompatActivity() {
         setupObservers()
         setupListeners()
         checkNotificationPermission()
+
+        updateLastBackupUI()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -113,7 +114,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        binding.btnPunch.setOnClickListener { 
+        binding.btnPunch.setOnClickListener {
             showClockAdjustDialog(null) { time ->
                 if (time != null) viewModel.punchClock(time)
             }
@@ -137,7 +138,7 @@ class MainActivity : AppCompatActivity() {
     private fun showClockAdjustDialog(initialTime: LocalTime?, onConfirm: (LocalTime?) -> Unit) {
         val dialogBinding = DialogClockAdjustBinding.inflate(LayoutInflater.from(this))
         var adjustedTime: LocalTime? = initialTime ?: LocalTime.now()
-        
+
         val dialog = AlertDialog.Builder(this)
             .setView(dialogBinding.root)
             .setCancelable(true)
@@ -241,6 +242,37 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Cancelar", null).show()
     }
 
+    private fun showBackupConfirmationDialog() {
+        binding.root.post {
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+            val currentVersion = prefs.getInt("backup_version_counter", 1)
+
+            AlertDialog.Builder(this)
+                .setTitle("Backup Geral no Drive")
+                .setMessage("Deseja realizar o backup geral de todas as marcações de ponto no Google Drive agora?")
+                .setPositiveButton("Sim") { _, _ ->
+                    Log.d("PONTO_TRACK", "UI: Abrindo seletor SAF para o arquivo v$currentVersion")
+                    driveExportLauncher.launch("backup_geral_2026_06_28_v$currentVersion.csv")
+                }
+                .setNegativeButton("Não", null)
+                .show()
+        }
+    }
+
+    private fun updateLastBackupUI() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val lastDate = prefs.getString("last_backup_date", "Nunca")
+        val lastName = prefs.getString("last_backup_name", "-")
+        val status = prefs.getString("last_backup_status", "Sem registros")
+        val count = prefs.getInt("last_backup_count", 0)
+
+        binding.tvLastBackupStatus.text = if (lastDate == "Nunca") {
+            "Nuvem: Nenhum backup realizado"
+        } else {
+            "Nuvem: $status em $lastDate ($count registros salvos)\nArquivo: $lastName"
+        }
+    }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         return true
@@ -248,9 +280,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_export_drive -> {
-                // Nome unificado conforme solicitado para o backup total 3.0.0
-                driveExportLauncher.launch("backup_geral_ponto_total.csv")
+            R.id.action_trigger_backup_flow -> {
+                showBackupConfirmationDialog()
                 true
             }
             R.id.action_quarterly_statement -> {
@@ -299,7 +330,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.monthlyBalanceMinutes.observe(this) { updateToolbarSummary() }
-        
+
         viewModel.rollingQuarterlyBalanceMinutes.observe(this) { balanceMinutes ->
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
@@ -309,14 +340,14 @@ class MainActivity : AppCompatActivity() {
             val hours = absBalance / 60
             val mins = absBalance % 60
             val sign = if (balanceMinutes >= 0) "+" else "-"
-            
+
             binding.tvMonthlyTotal.text = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, hours, mins)
             binding.progressMonthly.max = quarterlyGoalMinutes.toInt()
             binding.progressMonthly.progress = balanceMinutes.coerceAtLeast(0L).toInt().coerceAtMost(quarterlyGoalMinutes.toInt())
 
             val remainingMinutes = (quarterlyGoalMinutes - balanceMinutes).coerceAtLeast(0)
             binding.tvMonthlyRemaining.text = if (remainingMinutes > 0) {
-                String.format(Locale.getDefault(), "Faltam %dh %02dm para a meta trimestral de %dh", 
+                String.format(Locale.getDefault(), "Faltam %dh %02dm para a meta trimestral de %dh",
                     remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours * 3)
             } else {
                 "Meta trimestral batida! 🎉"
@@ -350,9 +381,36 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.importStatus.observe(this) { status ->
             status?.let {
-                // Feedback visual claro via Snackbar conforme solicitado na 3.0.0
                 Snackbar.make(binding.root, it, Snackbar.LENGTH_LONG).show()
                 viewModel.clearImportStatus()
+            }
+        }
+
+        viewModel.backupCountResult.observe(this) { count ->
+            if (count == null) return@observe
+
+            val totalRegistros = count
+            Log.d("PONTO_TRACK", "UI: backupCountResult observado legitimamente com total de registros: $totalRegistros")
+
+            binding.root.post {
+                val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+                val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                val currentVersion = prefs.getInt("backup_version_counter", 1)
+
+                prefs.edit()
+                    .putString("last_backup_date", now)
+                    .putString("last_backup_name", "backup_geral_2026_06_28_v$currentVersion.csv")
+                    .putString("last_backup_status", "Sucesso")
+                    .putInt("last_backup_count", totalRegistros)
+                    .putInt("backup_version_counter", currentVersion + 1)
+                    .apply()
+
+                updateLastBackupUI()
+
+                val msgFeedback = "Backup concluído com sucesso! $totalRegistros registros salvos."
+                Snackbar.make(binding.root, msgFeedback, Snackbar.LENGTH_LONG).show()
+
+                viewModel.clearBackupCountResult()
             }
         }
     }
