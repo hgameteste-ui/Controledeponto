@@ -11,7 +11,7 @@
         android:id="@+id/tvDialogTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Ajuste de Horário"
+        android:text="@string/dialog_clock_adjust_title"
         android:textColor="@color/white"
         android:textSize="18sp"
         android:textStyle="bold"
@@ -23,7 +23,7 @@
         android:id="@+id/tvDialogSubtitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Ajuste os minutos ou limpe a marcação"
+        android:text="@string/dialog_clock_adjust_subtitle"
         android:textColor="#AAAAAA"
         android:textSize="12sp"
         app:layout_constraintEnd_toEndOf="parent"
@@ -42,39 +42,66 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Diminuir minutos"
+            android:contentDescription="@string/desc_minus"
             android:src="@drawable/ic_chevron_left"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/tvAdjustedTime"
+            app:layout_constraintEnd_toStartOf="@+id/layoutTimeDisplay"
             app:layout_constraintHorizontal_chainStyle="packed"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:tint="@color/white" />
 
-        <TextView
-            android:id="@+id/tvAdjustedTime"
+        <LinearLayout
+            android:id="@+id/layoutTimeDisplay"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="8dp"
-            android:textColor="@color/white"
-            android:textSize="40sp"
-            android:textStyle="bold"
+            android:orientation="horizontal"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@+id/btnPlus"
             app:layout_constraintStart_toEndOf="@+id/btnMinus"
-            app:layout_constraintTop_toTopOf="parent"
-            tools:text="08:00" />
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/tvAdjustedHour"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="4dp"
+                android:textColor="@color/white"
+                android:textSize="40sp"
+                android:textStyle="bold"
+                tools:text="08" />
+
+            <TextView
+                android:id="@+id/tvAdjustedSeparator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/time_separator"
+                android:textColor="@color/white"
+                android:textSize="40sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvAdjustedMinute"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="4dp"
+                android:textColor="@color/white"
+                android:textSize="40sp"
+                android:textStyle="bold"
+                tools:text="00" />
+        </LinearLayout>
 
         <ImageButton
             android:id="@+id/btnPlus"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Aumentar minutos"
+            android:contentDescription="@string/desc_plus"
             android:src="@drawable/ic_chevron_right"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@+id/btnClearTime"
-            app:layout_constraintStart_toEndOf="@+id/tvAdjustedTime"
+            app:layout_constraintStart_toEndOf="@+id/layoutTimeDisplay"
             app:layout_constraintTop_toTopOf="parent"
             app:tint="@color/white" />
 
@@ -102,7 +129,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="32dp"
-        android:text="Cancelar"
+        android:text="@string/btn_cancel"
         android:textColor="#AAAAAA"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -113,7 +140,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="32dp"
-        android:text="Confirmar"
+        android:text="@string/btn_confirm"
         android:backgroundTint="@color/purple_500"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

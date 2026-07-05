@@ -11,6 +11,8 @@
  * Histórico de Modificações:
  * Versão   Data        Autor           Descrição
  * -----------------------------------------------------------------------------------------
+ * 3.0.8    Jun/2026    Walter R. C.    Melhoria no diálogo de ajuste de horário para permitir
+ *                                      edição de horas e minutos de forma independente.
  * 3.0.7    Jun/2026    Walter R. C.    Atualizada UI para exibir contagem de registros salvos no backup.
  * 3.0.6    Jun/2026    Walter R. C.    Adicionada cláusula de barreira reativa (count == null) para quebrar
  *                                      o loop infinito e mitigar travamentos de UI de forma definitiva.
@@ -138,6 +140,7 @@ class MainActivity : AppCompatActivity() {
     private fun showClockAdjustDialog(initialTime: LocalTime?, onConfirm: (LocalTime?) -> Unit) {
         val dialogBinding = DialogClockAdjustBinding.inflate(LayoutInflater.from(this))
         var adjustedTime: LocalTime? = initialTime ?: LocalTime.now()
+        var isHourSelected = false // Modo padrão: minutos
 
         val dialog = AlertDialog.Builder(this)
             .setView(dialogBinding.root)
@@ -146,13 +149,20 @@ class MainActivity : AppCompatActivity() {
 
         fun updateTimeDisplay() {
             if (adjustedTime != null) {
-                dialogBinding.tvAdjustedTime.text = adjustedTime!!.format(timeFormatter)
-                dialogBinding.tvAdjustedTime.alpha = 1.0f
+                dialogBinding.tvAdjustedHour.text = String.format(Locale.getDefault(), "%02d", adjustedTime!!.hour)
+                dialogBinding.tvAdjustedMinute.text = String.format(Locale.getDefault(), "%02d", adjustedTime!!.minute)
+                
+                // Realce visual para indicar qual campo está sendo editado
+                dialogBinding.tvAdjustedHour.alpha = if (isHourSelected) 1.0f else 0.5f
+                dialogBinding.tvAdjustedMinute.alpha = if (!isHourSelected) 1.0f else 0.5f
+                
                 dialogBinding.btnPlus.isEnabled = true
                 dialogBinding.btnMinus.isEnabled = true
             } else {
-                dialogBinding.tvAdjustedTime.text = "--:--"
-                dialogBinding.tvAdjustedTime.alpha = 0.5f
+                dialogBinding.tvAdjustedHour.text = "--"
+                dialogBinding.tvAdjustedMinute.text = "--"
+                dialogBinding.tvAdjustedHour.alpha = 0.5f
+                dialogBinding.tvAdjustedMinute.alpha = 0.5f
                 dialogBinding.btnPlus.isEnabled = false
                 dialogBinding.btnMinus.isEnabled = false
             }
@@ -160,6 +170,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateTimeDisplay()
+
+        // Permite alternar o foco entre Hora e Minuto ao tocar nos números
+        dialogBinding.tvAdjustedHour.setOnClickListener {
+            isHourSelected = true
+            updateTimeDisplay()
+        }
+        dialogBinding.tvAdjustedMinute.setOnClickListener {
+            isHourSelected = false
+            updateTimeDisplay()
+        }
 
         val handler = Handler(Looper.getMainLooper())
         var repeatAction: Runnable? = null
@@ -174,7 +194,11 @@ class MainActivity : AppCompatActivity() {
             if (adjustedTime == null) return
             repeatAction = object : Runnable {
                 override fun run() {
-                    adjustedTime = if (isIncrement) adjustedTime?.plusMinutes(5) else adjustedTime?.minusMinutes(5)
+                    adjustedTime = if (isHourSelected) {
+                        if (isIncrement) adjustedTime?.plusHours(1) else adjustedTime?.minusHours(1)
+                    } else {
+                        if (isIncrement) adjustedTime?.plusMinutes(5) else adjustedTime?.minusMinutes(5)
+                    }
                     updateTimeDisplay()
                     handler.postDelayed(this, 150)
                 }
@@ -184,7 +208,9 @@ class MainActivity : AppCompatActivity() {
 
         dialogBinding.btnPlus.setOnClickListener {
             if (adjustedTime == null) adjustedTime = LocalTime.now()
-            else adjustedTime = adjustedTime?.plusMinutes(1)
+            else {
+                adjustedTime = if (isHourSelected) adjustedTime?.plusHours(1) else adjustedTime?.plusMinutes(1)
+            }
             updateTimeDisplay()
         }
 
@@ -198,7 +224,9 @@ class MainActivity : AppCompatActivity() {
 
         dialogBinding.btnMinus.setOnClickListener {
             if (adjustedTime == null) adjustedTime = LocalTime.now()
-            else adjustedTime = adjustedTime?.minusMinutes(1)
+            else {
+                adjustedTime = if (isHourSelected) adjustedTime?.minusHours(1) else adjustedTime?.minusMinutes(1)
+            }
             updateTimeDisplay()
         }
 

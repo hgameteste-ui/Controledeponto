@@ -2,9 +2,18 @@
     <string name="app_name">Controle de ponto</string>
     <string name="btn_today_desc">Ir para hoje</string>
     <string name="dialog_clock_adjust_title">Ajuste de Horário</string>
-    <string name="dialog_clock_adjust_subtitle">Ajuste os minutos antes de registrar</string>
-    <string name="desc_minus_minutes">Diminuir minutos</string>
-    <string name="desc_plus_minutes">Aumentar minutos</string>
+    <string name="dialog_clock_adjust_subtitle">Toque na hora ou minuto para ajustar</string>
+    <string name="desc_minus">Diminuir</string>
+    <string name="desc_plus">Aumentar</string>
     <string name="btn_cancel">Cancelar</string>
+    <string name="btn_confirm">Confirmar</string>
     <string name="btn_confirm_punch">Confirmar Registro</string>
+    <string name="time_separator">:</string>
+
+    <string name="menu_export_pdf">Exportar PDF</string>
+    <string name="toast_export_dev">Funcionalidade de exportação em desenvolvimento!</string>
+    <string name="toast_monthly_details">Exibindo detalhes de %1$s...</string>
+    <string name="title_quarterly_history">HISTÓRICO DO TRIMESTRE ATUAL</string>
+    <string name="label_total_accumulated">TOTAL ACUMULADO</string>
+    <string name="empty_quarterly_records">Sem registros para o período selecionado.</string>
 </resources>
