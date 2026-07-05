@@ -35,19 +35,6 @@
 
         </com.google.android.material.appbar.MaterialToolbar>
 
-        <TextView
-            android:id="@+id/tvToolbarMonthlyTotal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="?attr/colorPrimary"
-            android:gravity="center"
-            android:paddingBottom="12dp"
-            android:paddingTop="0dp"
-            android:textColor="#E1BEE7"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            tools:text="Saldo: +00h 00m | Extras: 00h 00m | Meta: 0%" />
-
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
@@ -78,6 +65,18 @@
                     android:gravity="center"
                     android:orientation="vertical"
                     android:padding="16dp">
+
+                    <!-- Resumo Rápido integrado ao painel trimestral -->
+                    <TextView
+                        android:id="@+id/tvToolbarMonthlyTotal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:paddingBottom="8dp"
+                        android:textColor="#7B1FA2"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        tools:text="Saldo: +00h 00m | Extras: 00h 00m | Meta: 0%" />
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -211,7 +210,7 @@
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/btn_today_desc"
+                    android:contentDescription="Ir para hoje"
                     android:src="@android:drawable/ic_menu_today"
                     app:tint="?attr/colorPrimary" />
 
