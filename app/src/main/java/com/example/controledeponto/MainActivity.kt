@@ -349,7 +349,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvDate.text = date.format(dateFormatter).replaceFirstChar { it.uppercase() }
             val color = if (date == LocalDate.now()) R.color.purple_500 else android.R.color.holo_orange_dark
             binding.tvDate.setTextColor(resources.getColor(color, theme))
-            updateToolbarSummary()
+            updateMonthlySummary()
         }
 
         viewModel.selectedWorkDay.observe(this) { workDay ->
@@ -360,7 +360,8 @@ class MainActivity : AppCompatActivity() {
             updateStats(workDay); updateButtonUI(workDay); setupManualEdits(workDay)
         }
 
-        viewModel.monthlyBalanceMinutes.observe(this) { updateToolbarSummary() }
+        viewModel.monthlyBalanceMinutes.observe(this) { updateMonthlySummary() }
+        viewModel.monthlyOvertimeMinutes.observe(this) { updateMonthlySummary() }
 
         viewModel.rollingQuarterlyBalanceMinutes.observe(this) { balanceMinutes ->
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -383,7 +384,8 @@ class MainActivity : AppCompatActivity() {
             } else {
                 "Meta trimestral batida! 🎉"
             }
-            updateToolbarSummary()
+            
+            updateMonthlySummary()
         }
 
         viewModel.suggestedDailyOvertimeMinutes.observe(this) { minutes ->
@@ -446,7 +448,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateToolbarSummary() {
+    private fun updateMonthlySummary() {
         val overtimeMinutes = viewModel.monthlyOvertimeMinutes.value ?: 0L
         val balanceMinutes = viewModel.monthlyBalanceMinutes.value ?: 0L
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
@@ -464,7 +466,12 @@ class MainActivity : AppCompatActivity() {
         val extrasStr = String.format(Locale.getDefault(), "%02dh %02dm", eHours, eMins)
 
         val percentage = if (goalMinutes > 0) (overtimeMinutes.toDouble() / goalMinutes * 100).toInt() else 0
-        binding.tvToolbarMonthlyTotal.text = String.format(Locale.getDefault(), "Saldo: %s | Extras: %s | Meta: %d%%", balanceStr, extrasStr, percentage)
+        
+        binding.tvToolbarMonthlyTotal.text = String.format(
+            Locale.getDefault(), 
+            "Saldo Mês: %s | Extras: %s | Meta: %d%%", 
+            balanceStr, extrasStr, percentage
+        )
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
