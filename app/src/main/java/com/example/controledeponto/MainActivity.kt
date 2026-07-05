@@ -84,6 +84,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
+        // Exibe a versão atual do app lida do BuildConfig
+        binding.tvVersion.text = "v${BuildConfig.VERSION_NAME}"
+
         handleIntent(intent)
         setupObservers()
         setupListeners()
