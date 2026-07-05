@@ -211,14 +211,11 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
         val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
 
-        val targetMonths = listOf(
-            selectedDate,
-            selectedDate.minusMonths(1),
-            selectedDate.minusMonths(2)
-        )
+        val startMonth = ((selectedDate.monthValue - 1) / 3) * 3 + 1
 
         return list.filter { day ->
-            targetMonths.any { it.month == day.date.month && it.year == day.date.year } && !day.date.isAfter(now)
+            day.date.year == selectedDate.year && day.date.monthValue >= startMonth &&
+                    day.date.monthValue <= selectedDate.monthValue && !day.date.isAfter(now)
         }.sumOf { day ->
             val worked = day.calculateTotalMinutes(isToday = day.date == now)
             val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
