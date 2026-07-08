@@ -138,6 +138,11 @@ class MainActivity : AppCompatActivity() {
             viewModel.setDate(current.plusDays(1))
         }
         binding.btnToday.setOnClickListener { viewModel.setDate(LocalDate.now()) }
+
+        binding.cardMonthly.setOnClickListener {
+            val isVisible = binding.layoutDetails.visibility == View.VISIBLE
+            binding.layoutDetails.visibility = if (isVisible) View.GONE else View.VISIBLE
+        }
     }
 
     private fun showClockAdjustDialog(initialTime: LocalTime?, onConfirm: (LocalTime?) -> Unit) {
