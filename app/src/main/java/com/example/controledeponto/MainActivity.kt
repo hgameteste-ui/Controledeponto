@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnToday.setOnClickListener { viewModel.setDate(LocalDate.now()) }
 
-        binding.cardMonthly.setOnClickListener {
+        binding.cardSaldoTrimestre.setOnClickListener {
             val isVisible = binding.layoutDetails.visibility == View.VISIBLE
             binding.layoutDetails.visibility = if (isVisible) View.GONE else View.VISIBLE
         }
@@ -372,39 +372,31 @@ class MainActivity : AppCompatActivity() {
             val prefs = PreferenceManager.getDefaultSharedPreferences(this)
             val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
             val quarterlyGoalMinutes = monthlyGoalHours * 3 * 60L
-
-            val absBalance = Math.abs(balanceMinutes)
-            val hours = absBalance / 60
-            val mins = absBalance % 60
+            
             val sign = if (balanceMinutes >= 0) "+" else "-"
+            val saldoTrimestre = sign + formatTime(balanceMinutes)
+            val metaTrimestre = formatHours(quarterlyGoalMinutes)
+            val faltamTrimestre = formatTime(quarterlyGoalMinutes - balanceMinutes)
+            val percentTrimestre = if (quarterlyGoalMinutes > 0) (balanceMinutes.toDouble() / quarterlyGoalMinutes * 100).toInt() else 0
 
-            binding.tvMonthlyTotal.text = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, hours, mins)
-            binding.progressMonthly.max = quarterlyGoalMinutes.toInt()
-            binding.progressMonthly.progress = balanceMinutes.coerceAtLeast(0L).toInt().coerceAtMost(quarterlyGoalMinutes.toInt())
-
-            val remainingMinutes = (quarterlyGoalMinutes - balanceMinutes).coerceAtLeast(0)
-            binding.tvMonthlyRemaining.text = if (remainingMinutes > 0) {
-                String.format(Locale.getDefault(), "Faltam %dh %02dm para a meta trimestral de %dh",
-                    remainingMinutes / 60, remainingMinutes % 60, monthlyGoalHours * 3)
-            } else {
-                "Meta trimestral batida! 🎉"
-            }
+            binding.tvTrimestreSaldo.text = saldoTrimestre
+            binding.tvTrimestreMeta.text = metaTrimestre
+            binding.tvTrimestreFalta.text = faltamTrimestre
+            binding.tvTrimestrePercent.text = String.format("%d%%", percentTrimestre)
+            
+            binding.progressWork.max = quarterlyGoalMinutes.toInt()
+            binding.progressWork.progress = balanceMinutes.coerceAtLeast(0L).toInt().coerceAtMost(quarterlyGoalMinutes.toInt())
             
             updateMonthlySummary()
         }
 
         viewModel.suggestedDailyOvertimeMinutes.observe(this) { minutes ->
-            val hours = minutes / 60
-            val mins = minutes % 60
-            binding.tvSuggestedDaily.text = String.format(Locale.getDefault(), "Sugestão de extras/dia: %02dh %02dm", hours, mins)
+            binding.tvSuggestedDaily.text = "Sugestão de extras/dia: ${formatTime(minutes)}"
         }
 
         viewModel.extrapolatedOvertimeMinutes.observe(this) { minutes ->
-            val absMinutes = Math.abs(minutes)
-            val hours = absMinutes / 60
-            val mins = absMinutes % 60
             val sign = if (minutes >= 0) "+" else "-"
-            binding.tvExtrapolatedOvertime.text = String.format(Locale.getDefault(), "Projeção final do mês: %s%02dh %02dm", sign, hours, mins)
+            binding.tvExtrapolatedOvertime.text = "Projeção final do mês: $sign${formatTime(minutes)}"
         }
 
         viewModel.monthlyBusinessDays.observe(this) { total ->
@@ -454,29 +446,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateMonthlySummary() {
-        val overtimeMinutes = viewModel.monthlyOvertimeMinutes.value ?: 0L
         val balanceMinutes = viewModel.monthlyBalanceMinutes.value ?: 0L
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val monthlyGoalHours = prefs.getString("monthly_goal", "160")?.toIntOrNull() ?: 160
         val goalMinutes = monthlyGoalHours * 60L
 
-        val absBalance = Math.abs(balanceMinutes)
-        val balanceHours = absBalance / 60
-        val balanceMins = absBalance % 60
         val sign = if (balanceMinutes >= 0) "+" else "-"
-        val balanceStr = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, balanceHours, balanceMins)
+        val saldoMes = sign + formatTime(balanceMinutes)
+        val metaMes = formatHours(goalMinutes)
+        val faltamMes = formatTime(goalMinutes - balanceMinutes)
+        val percentMes = if (goalMinutes > 0) (balanceMinutes.toDouble() / goalMinutes * 100).toInt() else 0
 
-        val eHours = overtimeMinutes / 60
-        val eMins = overtimeMinutes % 60
-        val extrasStr = String.format(Locale.getDefault(), "%02dh %02dm", eHours, eMins)
-
-        val percentage = if (goalMinutes > 0) (overtimeMinutes.toDouble() / goalMinutes * 100).toInt() else 0
-        
-        binding.tvToolbarMonthlyTotal.text = String.format(
-            Locale.getDefault(), 
-            "Saldo Mês: %s | Extras: %s | Meta: %d%%", 
-            balanceStr, extrasStr, percentage
-        )
+        binding.tvMesSaldo.text = saldoMes
+        binding.tvMesMeta.text = metaMes
+        binding.tvMesFalta.text = faltamMes
+        binding.tvMesPercent.text = String.format("%d%%", percentMes)
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
@@ -530,7 +514,7 @@ class MainActivity : AppCompatActivity() {
         val isHolidayOrOff = workDay?.isHolidayOrOffDay ?: false
 
         val totalWorked = workDay?.calculateTotalMinutes(isToday = isToday) ?: 0L
-        binding.tvTotalWorked.text = String.format(Locale.getDefault(), "%02dh %02dm", totalWorked / 60, totalWorked % 60)
+        binding.tvTotalWorked.text = formatTime(totalWorked)
 
         val effectiveGoal = if (isWeekend || isHolidayOrOff || (isToday && workDay?.clockIn == null)) 0L else targetMinutes
         val balanceMinutes = totalWorked - effectiveGoal
@@ -541,14 +525,14 @@ class MainActivity : AppCompatActivity() {
             balanceMinutes < 0 -> "-"
             else -> ""
         }
-        binding.tvDailyOvertime.text = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, absBalance / 60, absBalance % 60)
+        binding.tvDailyOvertime.text = "$sign${formatTime(absBalance)}"
 
         binding.progressWork.max = targetMinutes.toInt()
         binding.progressWork.progress = totalWorked.toInt().coerceAtMost(targetMinutes.toInt())
 
         val remaining = (effectiveGoal - totalWorked).coerceAtLeast(0L)
         binding.tvRemaining.text = if (remaining > 0) {
-            String.format(Locale.getDefault(), "Faltam %02dh %02dm", remaining / 60, remaining % 60)
+            "Faltam ${formatTime(remaining)}"
         } else {
             if ((isWeekend || isHolidayOrOff) && totalWorked == 0L) "Folga / Feriado" else "Jornada concluída!"
         }
@@ -621,5 +605,14 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnPunch.text = label
         binding.btnPunch.isEnabled = workDay?.clockOut == null && workDay?.isHolidayOrOffDay != true
+    }
+
+    private fun formatTime(minutes: Long): String {
+        val abs = Math.abs(minutes)
+        return String.format(Locale.getDefault(), "%02dh %02dm", abs / 60, abs % 60)
+    }
+
+    private fun formatHours(minutes: Long): String {
+        return String.format(Locale.getDefault(), "%dh", minutes / 60)
     }
 }
