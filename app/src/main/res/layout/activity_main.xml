@@ -22,6 +22,17 @@
             app:title="Meu Ponto"
             app:titleTextColor="@color/white">
 
+            <!-- Indicador visual de status de backup na nuvem -->
+            <ImageView
+                android:id="@+id/ivCloudStatus"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="8dp"
+                android:contentDescription="Status do Backup"
+                android:src="@drawable/ic_sync"
+                app:tint="@color/white" />
+
             <TextView
                 android:id="@+id/tvVersion"
                 android:layout_width="wrap_content"
@@ -176,23 +187,6 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Status de Backup Automático (Novo v3.0.0) -->
-            <TextView
-                android:id="@+id/tvLastBackupStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:alpha="0.7"
-                android:textColor="#9E9E9E"
-                android:textSize="10sp"
-                android:gravity="center"
-                android:visibility="visible"
-                android:text="Nuvem: Verificando status do backup..."
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/cardMonthly"
-                tools:text="Nuvem: Sincronizado em 28/06/2026 às 13:13\nArquivo: backup_geral_2026_06_28_v1.csv" />
-
             <LinearLayout
                 android:id="@+id/layoutDate"
                 android:layout_width="wrap_content"
@@ -202,7 +196,7 @@
                 android:orientation="horizontal"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/tvLastBackupStatus">
+                app:layout_constraintTop_toBottomOf="@id/cardMonthly">
 
                 <ImageButton
                     android:id="@+id/btnPreviousDay"
@@ -479,6 +473,21 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@id/btnPunch" />
+
+            <!-- Status do último backup na nuvem -->
+            <TextView
+                android:id="@+id/tvLastBackupStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="16dp"
+                android:alpha="0.6"
+                android:gravity="center"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="10sp"
+                app:layout_constraintTop_toBottomOf="@id/tvTarget"
+                app:layout_constraintBottom_toBottomOf="parent"
+                tools:text="Nuvem: Sucesso em 10/10/2023 10:00 (100 registros salvos)\nArquivo: backup.csv" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.core.widget.NestedScrollView>
