@@ -16,4 +16,7 @@
     <string name="title_quarterly_history">HISTÓRICO DO TRIMESTRE ATUAL</string>
     <string name="label_total_accumulated">TOTAL ACUMULADO</string>
     <string name="empty_quarterly_records">Sem registros para o período selecionado.</string>
+
+    <!-- Intervalos -->
+    <string name="interval_times_format">%1$s - %2$s</string>
 </resources>

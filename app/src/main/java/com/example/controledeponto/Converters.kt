@@ -28,4 +28,14 @@ class Converters {
     fun timeToString(time: LocalTime?): String? {
         return time?.format(timeFormatter)
     }
+
+    @TypeConverter
+    fun fromIntervalType(value: String): IntervalType {
+        return IntervalType.valueOf(value)
+    }
+
+    @TypeConverter
+    fun intervalTypeToString(type: IntervalType): String {
+        return type.name
+    }
 }

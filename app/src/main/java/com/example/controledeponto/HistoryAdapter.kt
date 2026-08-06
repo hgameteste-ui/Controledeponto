@@ -1,3 +1,14 @@
+/*
+ * Nome: HistoryAdapter.kt
+ * Versão: 1.1.0
+ * Data: 24/05/2024
+ * Hora: 22:30
+ * Descrição: Adapter para o histórico de registros, atualizado para exibir o tempo total considerando os intervalos reais.
+ * 
+ * Histórico de Modificações:
+ * 24/05/2024 22:30 - Alterado para usar WorkDayWithIntervals visando precisão nos cálculos de horas trabalhadas.
+ */
+
 package com.example.controledeponto
 
 import android.view.LayoutInflater
@@ -7,8 +18,9 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.controledeponto.databinding.ItemHistoryBinding
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-class HistoryAdapter(private val onItemClicked: (WorkDay) -> Unit) : ListAdapter<WorkDay, HistoryAdapter.ViewHolder>(DiffCallback) {
+class HistoryAdapter(private val onItemClicked: (WorkDayWithIntervals) -> Unit) : ListAdapter<WorkDayWithIntervals, HistoryAdapter.ViewHolder>(DiffCallback) {
 
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -25,20 +37,24 @@ class HistoryAdapter(private val onItemClicked: (WorkDay) -> Unit) : ListAdapter
     }
 
     inner class ViewHolder(private val binding: ItemHistoryBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(item: WorkDay) {
-            binding.tvHistoryDate.text = item.date.format(dateFormatter)
-            binding.tvHistoryTimes.text = "E: ${item.clockIn?.format(timeFormatter) ?: "--"} | S: ${item.clockOut?.format(timeFormatter) ?: "--"}"
+        fun bind(item: WorkDayWithIntervals) {
+            val workDay = item.workDay
+            binding.tvHistoryDate.text = workDay.date.format(dateFormatter)
+            binding.tvHistoryTimes.text = "E: ${workDay.clockIn?.format(timeFormatter) ?: "--"} | S: ${workDay.clockOut?.format(timeFormatter) ?: "--"}"
             
-            // Usa a função de cálculo centralizada do WorkDay
+            // Calcula o tempo total real usando os intervalos associados
             val totalMinutes = item.calculateTotalMinutes(isToday = false)
             val hours = totalMinutes / 60
             val minutes = totalMinutes % 60
-            binding.tvHistoryTotal.text = String.format("%02dh %02dm", hours, minutes)
+            binding.tvHistoryTotal.text = String.format(Locale.getDefault(), "%02dh %02dm", hours, minutes)
         }
     }
 
-    companion object DiffCallback : DiffUtil.ItemCallback<WorkDay>() {
-        override fun areItemsTheSame(oldItem: WorkDay, newItem: WorkDay) = oldItem.date == newItem.date
-        override fun areContentsTheSame(oldItem: WorkDay, newItem: WorkDay) = oldItem == newItem
+    companion object DiffCallback : DiffUtil.ItemCallback<WorkDayWithIntervals>() {
+        override fun areItemsTheSame(oldItem: WorkDayWithIntervals, newItem: WorkDayWithIntervals) = 
+            oldItem.workDay.date == newItem.workDay.date
+        
+        override fun areContentsTheSame(oldItem: WorkDayWithIntervals, newItem: WorkDayWithIntervals) = 
+            oldItem == newItem
     }
 }

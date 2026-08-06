@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+ * Nome: dialog_clock_adjust.xml
+ * Versão: 1.2.0
+ * Data: 25/05/2024
+ * Hora: 15:00
+ * Descrição: Layout do diálogo de ajuste de horário, atualizado para permitir entrada de texto direta via EditText.
+ *
+ * Histórico de Modificações:
+ * 25/05/2024 12:00 - Substituídos TextViews por EditTexts para permitir digitação manual de horas e minutos.
+ * 25/05/2024 15:00 - Ajustes de atributos de entrada para melhor experiência do usuário (selectAllOnFocus, imeOptions).
+-->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -62,14 +73,20 @@
             app:layout_constraintStart_toEndOf="@+id/btnMinus"
             app:layout_constraintTop_toTopOf="parent">
 
-            <TextView
+            <EditText
                 android:id="@+id/tvAdjustedHour"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:inputType="number"
+                android:maxLength="2"
                 android:padding="4dp"
+                android:textAlignment="center"
                 android:textColor="@color/white"
                 android:textSize="40sp"
                 android:textStyle="bold"
+                android:selectAllOnFocus="true"
+                android:imeOptions="actionNext"
                 tools:text="08" />
 
             <TextView
@@ -81,14 +98,20 @@
                 android:textSize="40sp"
                 android:textStyle="bold" />
 
-            <TextView
+            <EditText
                 android:id="@+id/tvAdjustedMinute"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:inputType="number"
+                android:maxLength="2"
                 android:padding="4dp"
+                android:textAlignment="center"
                 android:textColor="@color/white"
                 android:textSize="40sp"
                 android:textStyle="bold"
+                android:selectAllOnFocus="true"
+                android:imeOptions="actionDone"
                 tools:text="00" />
         </LinearLayout>
 
