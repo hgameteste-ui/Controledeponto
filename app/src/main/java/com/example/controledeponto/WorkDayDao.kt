@@ -1,15 +1,16 @@
 /*
  * Nome: WorkDayDao.kt
- * Versão: 1.6.0
+ * Versão: 1.7.0
  * Data: 25/05/2024
- * Hora: 18:00
+ * Hora: 21:30
  * Descrição: Interface DAO para gerenciar registros de dias de trabalho.
  * 
  * Histórico de Modificações:
- * 24/05/2024 21:15 - Adicionados métodos para buscar WorkDayWithIntervals para garantir contabilização correta de pausas.
+ * 24/05/2024 21:15 - Adicionados métodos para buscar WorkDayWithIntervals.
  * 24/05/2024 21:45 - Substituído @Insert(REPLACE) por @Upsert para preservar intervalos relacionados.
  * 25/05/2024 14:00 - Atualizada documentação e garantida integridade dos métodos de busca agregada.
  * 25/05/2024 18:00 - Revisão final e atualização de cabeçalho para suporte a edição de intervalos.
+ * 25/05/2024 21:30 - Adicionado método de exclusão de dia de trabalho.
  */
 
 package com.example.controledeponto
@@ -35,6 +36,9 @@ interface WorkDayDao {
 
     @Update
     suspend fun update(workDay: WorkDay)
+
+    @Delete
+    suspend fun delete(workDay: WorkDay)
 
     @Transaction
     @Query("SELECT * FROM work_days ORDER BY date DESC")

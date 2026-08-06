@@ -1,18 +1,13 @@
 /*
  * Nome: WorkViewModel.kt
- * Versão: 1.7.0
+ * Versão: 1.9.0
  * Data: 25/05/2024
- * Hora: 16:30
- * Descrição: ViewModel responsável pela lógica de negócio dos registros de ponto e intervalos.
+ * Hora: 21:00
+ * Descrição: ViewModel atualizado para gerenciar a exclusão completa de dias de trabalho e registros individuais.
  * 
  * Histórico de Modificações:
- * 24/05/2024 14:40 - Adicionado suporte a intervalos (WorkInterval).
- * 24/05/2024 18:00 - Atualizados métodos startInterval e endInterval para suportar customTime manual.
- * 24/05/2024 19:30 - Adicionado suporte para exclusão de intervalos.
- * 24/05/2024 22:00 - Corrigida contabilização de intervalos nos cálculos usando WorkDayWithIntervals.
- * 24/05/2024 22:30 - Adicionado monthlyWorkDaysWithIntervals para suportar a tela de auditoria.
- * 25/05/2024 16:00 - Adicionado método updateInterval para permitir a edição de intervalos existentes.
- * 25/05/2024 16:30 - Atualização do cabeçalho conforme padrão obrigatório.
+ * 25/05/2024 20:00 - Implementada a lógica de atualização de WorkDay para permitir "limpar" campos.
+ * 25/05/2024 21:00 - Adicionado método deleteWorkDay para permitir resetar o estado do dia completamente.
  */
 
 package com.example.controledeponto
@@ -329,6 +324,13 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Exclui o registro do dia completo.
+     */
+    fun deleteWorkDay(workDay: WorkDay) = viewModelScope.launch {
+        repository.deleteWorkDay(workDay)
+    }
+
+    /**
      * Retorna a LiveData com a lista de intervalos do dia selecionado.
      */
     fun getIntervalsForDay(): LiveData<List<WorkInterval>> = intervals
@@ -426,7 +428,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     fun exportFullHistoryToDrive(uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
         _isProcessing.postValue(true)
         try {
-            val allData = repository.getAllWorkDaysWithIntervalsSync()
+            val allData = repository.getAllWorkDaysSync()
             val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
             val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
             val tf = DateTimeFormatter.ofPattern("HH:mm"); val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -435,9 +437,8 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             getApplication<Application>().contentResolver.openOutputStream(uri)?.use { outputStream ->
                 BufferedWriter(OutputStreamWriter(outputStream, Charsets.UTF_8)).use { writer ->
                     writer.write("Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;Horas Trabalhadas;Meta;Saldo;Tipo\n")
-                    allData.forEach { dayWithIntervals ->
-                        val day = dayWithIntervals.workDay
-                        val totalMinutes = dayWithIntervals.calculateTotalMinutes(isToday = day.date == LocalDate.now())
+                    allData.forEach { day ->
+                        val totalMinutes = day.calculateTotalMinutes(isToday = day.date == LocalDate.now())
                         val effectiveGoal = if (day.date.dayOfWeek.value > 5 || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
                         writer.write("${day.date.format(df)};${day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)};${day.clockIn?.format(tf) ?: ""};${day.breakStart?.format(tf) ?: ""};${day.breakEnd?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};$totalMinutes;$effectiveGoal;${totalMinutes-effectiveGoal};${if(day.isHolidayOrOffDay) "Feriado" else "Util"}\n")
                     }

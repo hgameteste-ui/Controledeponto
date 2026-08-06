@@ -1,14 +1,13 @@
 /*
  * Nome: WorkRepository.kt
- * Versão: 1.2.0
- * Data: 24/05/2024
- * Hora: 21:30
- * Descrição: Repositório que centraliza o acesso aos dados de WorkDay e WorkInterval, agora com suporte a busca de dados agregados.
+ * Versão: 1.3.0
+ * Data: 25/05/2024
+ * Hora: 21:00
+ * Descrição: Repositório que centraliza o acesso aos dados de WorkDay e WorkInterval.
  * 
  * Histórico de Modificações:
- * 24/05/2024 14:30 - Adicionado suporte ao IntervalDao.
- * 24/05/2024 19:00 - Adicionado método deleteInterval para permitir exclusão de pausas.
  * 24/05/2024 21:30 - Adicionados métodos para buscar WorkDayWithIntervals para garantir cálculos precisos.
+ * 25/05/2024 21:00 - Adicionado método deleteWorkDay para permitir a exclusão completa de um dia.
  */
 
 package com.example.controledeponto
@@ -37,6 +36,8 @@ class WorkRepository(
     fun getHolidays(): LiveData<List<WorkDay>> = workDayDao.getHolidays()
 
     suspend fun insert(workDay: WorkDay) = workDayDao.insert(workDay)
+
+    suspend fun deleteWorkDay(workDay: WorkDay) = workDayDao.delete(workDay)
 
     // Intervalos
     fun getIntervalsByDate(date: LocalDate): Flow<List<WorkInterval>> = intervalDao.getIntervalsByDate(date)

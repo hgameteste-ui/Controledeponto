@@ -1,14 +1,15 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 1.5.0
+ * Versão: 1.8.0
  * Data: 25/05/2024
- * Hora: 17:30
- * Descrição: Atividade principal atualizada para permitir a edição de intervalos registrados, com validações de horário e conflitos.
+ * Hora: 21:30
+ * Descrição: Atividade principal atualizada para permitir a exclusão da entrada quando não houver registros posteriores e resetar o dia ao excluir o último registro.
  * 
  * Histórico de Modificações:
- * 24/05/2024 20:30 - Implementada funcionalidade de exclusão de intervalos com confirmação.
  * 25/05/2024 13:30 - Implementada digitação manual de horários no diálogo de ajuste.
- * 25/05/2024 17:30 - Implementada edição de intervalos com validações de limites (Entrada/Saída) e sobreposição.
+ * 25/05/2024 17:30 - Implementada edição de intervalos com validações de limites.
+ * 25/05/2024 20:30 - Implementada exclusão de registros (entrada, saída, pausas).
+ * 25/05/2024 21:30 - Removida restrição que impedia excluir o único registro do dia (entrada) e implementado o reset completo do dia.
  */
 
 package com.example.controledeponto
@@ -132,7 +133,7 @@ class MainActivity : AppCompatActivity() {
             val workDay = viewModel.selectedWorkDay.value
             val otherIntervals = (viewModel.intervals.value ?: emptyList()).filter { it.id != interval.id }
             
-            val error = validateInterval(currentStart, currentEnd, workDay, otherIntervals)
+            val error = validateIntervalRules(currentStart, currentEnd, workDay, otherIntervals)
             if (error != null) {
                 Snackbar.make(dialogBinding.root, error, Snackbar.LENGTH_LONG).show()
             } else {
@@ -147,25 +148,22 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun validateInterval(start: LocalTime, end: LocalTime, workDay: WorkDay?, others: List<WorkInterval>): String? {
-        if (start.isAfter(end)) return "Início não pode ser depois do fim"
+    private fun validateIntervalRules(start: LocalTime, end: LocalTime, workDay: WorkDay?, others: List<WorkInterval>): String? {
+        if (start.isAfter(end)) return "O início não pode ser posterior ao fim."
         
         if (workDay?.clockIn != null && start.isBefore(workDay.clockIn)) {
-            return "Início não pode ser antes da entrada (${workDay.clockIn.format(timeFormatter)})"
+            return "O intervalo não pode iniciar antes da entrada (${workDay.clockIn.format(timeFormatter)})."
         }
         
         if (workDay?.clockOut != null && end.isAfter(workDay.clockOut)) {
-            return "Fim não pode ser depois da saída (${workDay.clockOut.format(timeFormatter)})"
+            return "O intervalo não pode terminar após a saída (${workDay.clockOut.format(timeFormatter)})."
         }
         
-        // Validar sobreposição com outros intervalos
         for (other in others) {
             val oStart = other.startTime
-            val oEnd = other.endTime ?: LocalTime.MAX // Intervalo em aberto tecnicamente vai até o fim do dia
-            
-            // (StartA < EndB) and (EndA > StartB) -> Overlap
+            val oEnd = other.endTime ?: LocalTime.MAX 
             if (start.isBefore(oEnd) && end.isAfter(oStart)) {
-                return "Horário conflita com outro intervalo (${oStart.format(timeFormatter)} - ${if(other.endTime != null) oEnd.format(timeFormatter) else "em aberto"})"
+                return "Este horário conflita com outro intervalo registrado."
             }
         }
         
@@ -303,11 +301,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showClockAdjustDialog(initialTime: LocalTime?, onConfirm: (LocalTime?) -> Unit) {
+    private fun showClockAdjustDialog(initialTime: LocalTime?, onDelete: (() -> Unit)? = null, onConfirm: (LocalTime?) -> Unit) {
         val dialogBinding = DialogClockAdjustBinding.inflate(LayoutInflater.from(this))
         var adjustedTime: LocalTime? = initialTime ?: LocalTime.now().truncatedTo(ChronoUnit.MINUTES)
         var isHourSelected = true // Foco inicial no campo de horas
         val dialog = AlertDialog.Builder(this).setView(dialogBinding.root).create()
+
+        if (onDelete != null && initialTime != null) {
+            dialogBinding.btnDelete.visibility = View.VISIBLE
+            dialogBinding.btnDelete.setOnClickListener {
+                AlertDialog.Builder(this)
+                    .setTitle("Excluir Registro")
+                    .setMessage("Deseja realmente excluir este horário?")
+                    .setPositiveButton("Excluir") { _, _ ->
+                        onDelete()
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            }
+        }
 
         fun updateTimeDisplay(fromTextWatcher: Boolean = false) {
             if (adjustedTime != null) {
@@ -462,7 +475,34 @@ class MainActivity : AppCompatActivity() {
                 R.id.tvClockOut, R.id.lblClockOut -> current.clockOut
                 else -> null
             }
-            showClockAdjustDialog(time) { newTime ->
+            
+            val deleteAction: (() -> Unit)? = if (time != null) {
+                {
+                    val canDelete = canDeleteRecord(view.id, current)
+                    if (canDelete == null) {
+                        val totalIntervals = viewModel.intervals.value?.size ?: 0
+                        val fields = listOf(current.clockIn, current.breakStart, current.breakEnd, current.clockOut)
+                        val activeFields = fields.count { it != null }
+
+                        if (activeFields + totalIntervals == 1 && !current.isHolidayOrOffDay) {
+                             viewModel.deleteWorkDay(current)
+                        } else {
+                            val updated = when(view.id) {
+                                R.id.tvClockIn, R.id.lblClockIn -> current.copy(clockIn = null)
+                                R.id.tvBreakStart, R.id.lblBreakStart -> current.copy(breakStart = null)
+                                R.id.tvBreakEnd, R.id.lblBreakEnd -> current.copy(breakEnd = null)
+                                R.id.tvClockOut, R.id.lblClockOut -> current.copy(clockOut = null)
+                                else -> current
+                            }
+                            viewModel.updateWorkDay(updated)
+                        }
+                    } else {
+                        Snackbar.make(binding.root, canDelete, Snackbar.LENGTH_LONG).show()
+                    }
+                }
+            } else null
+
+            showClockAdjustDialog(time, deleteAction) { newTime ->
                 val updated = when(view.id) {
                     R.id.tvClockIn, R.id.lblClockIn -> current.copy(clockIn = newTime)
                     R.id.tvBreakStart, R.id.lblBreakStart -> current.copy(breakStart = newTime)
@@ -477,6 +517,26 @@ class MainActivity : AppCompatActivity() {
         binding.tvBreakStart.setOnClickListener(listener); binding.lblBreakStart.setOnClickListener(listener)
         binding.tvBreakEnd.setOnClickListener(listener); binding.lblBreakEnd.setOnClickListener(listener)
         binding.tvClockOut.setOnClickListener(listener); binding.lblClockOut.setOnClickListener(listener)
+    }
+
+    private fun canDeleteRecord(viewId: Int, workDay: WorkDay): String? {
+        val totalIntervals = viewModel.intervals.value?.size ?: 0
+
+        return when (viewId) {
+            R.id.tvClockIn, R.id.lblClockIn -> {
+                if (workDay.clockOut != null || workDay.breakStart != null || totalIntervals > 0) 
+                    "Exclua os registros posteriores antes de remover a entrada."
+                else null
+            }
+            R.id.tvBreakStart, R.id.lblBreakStart -> {
+                if (workDay.breakEnd != null) "Exclua o fim do intervalo antes de remover o início."
+                else null
+            }
+            R.id.tvClockOut, R.id.lblClockOut -> {
+                null
+            }
+            else -> null
+        }
     }
 
     private fun showDatePicker() {
