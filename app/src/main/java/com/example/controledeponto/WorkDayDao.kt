@@ -1,14 +1,15 @@
 /*
  * Nome: WorkDayDao.kt
- * Versão: 1.5.0
+ * Versão: 1.6.0
  * Data: 25/05/2024
- * Hora: 14:00
+ * Hora: 18:00
  * Descrição: Interface DAO para gerenciar registros de dias de trabalho.
  * 
  * Histórico de Modificações:
- * 24/05/2024 21:15 - Adicionados métodos para buscar WorkDayWithIntervals.
- * 24/05/2024 21:45 - Substituído @Insert(REPLACE) por @Upsert para preservar intervalos relacionados (evitar DELETE CASCADE).
+ * 24/05/2024 21:15 - Adicionados métodos para buscar WorkDayWithIntervals para garantir contabilização correta de pausas.
+ * 24/05/2024 21:45 - Substituído @Insert(REPLACE) por @Upsert para preservar intervalos relacionados.
  * 25/05/2024 14:00 - Atualizada documentação e garantida integridade dos métodos de busca agregada.
+ * 25/05/2024 18:00 - Revisão final e atualização de cabeçalho para suporte a edição de intervalos.
  */
 
 package com.example.controledeponto
@@ -29,10 +30,6 @@ interface WorkDayDao {
     @Query("SELECT * FROM work_days WHERE date = :date")
     fun getWorkDayWithIntervals(date: LocalDate): LiveData<WorkDayWithIntervals?>
 
-    /**
-     * Usa @Upsert para evitar que o OnConflict.REPLACE realize um DELETE do registro original,
-     * o que dispararia o DELETE CASCADE na tabela de intervalos.
-     */
     @Upsert
     suspend fun insert(workDay: WorkDay)
 

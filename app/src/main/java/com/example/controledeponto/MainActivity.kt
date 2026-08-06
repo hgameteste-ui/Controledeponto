@@ -1,16 +1,14 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 1.4.0
+ * Versão: 1.5.0
  * Data: 25/05/2024
- * Hora: 13:30
- * Descrição: Atividade principal atualizada para gerenciar múltiplos intervalos com ajuste manual de horário e exclusão, permitindo digitação direta de horas e minutos no diálogo de ajuste.
+ * Hora: 17:30
+ * Descrição: Atividade principal atualizada para permitir a edição de intervalos registrados, com validações de horário e conflitos.
  * 
  * Histórico de Modificações:
- * 24/05/2024 15:00 - Integrado RecyclerView para exibição da lista de intervalos.
- * 24/05/2024 16:45 - Adicionado suporte a ajuste manual de horário ao iniciar e finalizar intervalos via dialog.
- * 24/05/2024 17:30 - Refatoração dos listeners de intervalo para garantir o uso do dialog de ajuste de horário.
  * 24/05/2024 20:30 - Implementada funcionalidade de exclusão de intervalos com confirmação.
- * 25/05/2024 13:30 - Implementada digitação manual de horários no diálogo de ajuste com validação automática e sincronização com botões +/-.
+ * 25/05/2024 13:30 - Implementada digitação manual de horários no diálogo de ajuste.
+ * 25/05/2024 17:30 - Implementada edição de intervalos com validações de limites (Entrada/Saída) e sobreposição.
  */
 
 package com.example.controledeponto
@@ -39,6 +37,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
 import com.example.controledeponto.databinding.ActivityMainBinding
 import com.example.controledeponto.databinding.DialogClockAdjustBinding
+import com.example.controledeponto.databinding.DialogIntervalEditBinding
 import com.google.android.material.snackbar.Snackbar
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -89,9 +88,88 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupRecyclerView() {
         intervalAdapter = WorkIntervalAdapter { interval ->
-            showDeleteIntervalDialog(interval)
+            showEditIntervalDialog(interval)
         }
         binding.rvIntervals.adapter = intervalAdapter
+    }
+
+    private fun showEditIntervalDialog(interval: WorkInterval) {
+        val dialogBinding = DialogIntervalEditBinding.inflate(LayoutInflater.from(this))
+        val dialog = AlertDialog.Builder(this).setView(dialogBinding.root).create()
+        
+        var currentStart = interval.startTime
+        var currentEnd = interval.endTime ?: LocalTime.now().truncatedTo(ChronoUnit.MINUTES)
+
+        fun updateLabels() {
+            dialogBinding.btnEditStart.text = currentStart.format(timeFormatter)
+            dialogBinding.btnEditEnd.text = currentEnd.format(timeFormatter)
+        }
+
+        dialogBinding.btnEditStart.setOnClickListener {
+            showClockAdjustDialog(currentStart) { newTime ->
+                if (newTime != null) {
+                    currentStart = newTime
+                    updateLabels()
+                }
+            }
+        }
+
+        dialogBinding.btnEditEnd.setOnClickListener {
+            showClockAdjustDialog(currentEnd) { newTime ->
+                if (newTime != null) {
+                    currentEnd = newTime
+                    updateLabels()
+                }
+            }
+        }
+
+        dialogBinding.btnDeleteInterval.setOnClickListener {
+            showDeleteIntervalDialog(interval)
+            dialog.dismiss()
+        }
+
+        dialogBinding.btnConfirm.setOnClickListener {
+            val workDay = viewModel.selectedWorkDay.value
+            val otherIntervals = (viewModel.intervals.value ?: emptyList()).filter { it.id != interval.id }
+            
+            val error = validateInterval(currentStart, currentEnd, workDay, otherIntervals)
+            if (error != null) {
+                Snackbar.make(dialogBinding.root, error, Snackbar.LENGTH_LONG).show()
+            } else {
+                viewModel.updateInterval(interval.copy(startTime = currentStart, endTime = currentEnd))
+                dialog.dismiss()
+            }
+        }
+
+        dialogBinding.btnCancel.setOnClickListener { dialog.dismiss() }
+        
+        updateLabels()
+        dialog.show()
+    }
+
+    private fun validateInterval(start: LocalTime, end: LocalTime, workDay: WorkDay?, others: List<WorkInterval>): String? {
+        if (start.isAfter(end)) return "Início não pode ser depois do fim"
+        
+        if (workDay?.clockIn != null && start.isBefore(workDay.clockIn)) {
+            return "Início não pode ser antes da entrada (${workDay.clockIn.format(timeFormatter)})"
+        }
+        
+        if (workDay?.clockOut != null && end.isAfter(workDay.clockOut)) {
+            return "Fim não pode ser depois da saída (${workDay.clockOut.format(timeFormatter)})"
+        }
+        
+        // Validar sobreposição com outros intervalos
+        for (other in others) {
+            val oStart = other.startTime
+            val oEnd = other.endTime ?: LocalTime.MAX // Intervalo em aberto tecnicamente vai até o fim do dia
+            
+            // (StartA < EndB) and (EndA > StartB) -> Overlap
+            if (start.isBefore(oEnd) && end.isAfter(oStart)) {
+                return "Horário conflita com outro intervalo (${oStart.format(timeFormatter)} - ${if(other.endTime != null) oEnd.format(timeFormatter) else "em aberto"})"
+            }
+        }
+        
+        return null
     }
 
     private fun showDeleteIntervalDialog(interval: WorkInterval) {

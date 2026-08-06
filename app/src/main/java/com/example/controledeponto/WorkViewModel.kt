@@ -1,10 +1,9 @@
 /*
  * Nome: WorkViewModel.kt
- * Versão: 1.5.0
- * Data: 24/05/2024
- * Hora: 22:30
- * Descrição: ViewModel atualizado para gerenciar múltiplos intervalos e fornecer dados agregados (WorkDayWithIntervals)
- * para garantir que as pausas sejam contabilizadas corretamente em todas as telas e cálculos.
+ * Versão: 1.7.0
+ * Data: 25/05/2024
+ * Hora: 16:30
+ * Descrição: ViewModel responsável pela lógica de negócio dos registros de ponto e intervalos.
  * 
  * Histórico de Modificações:
  * 24/05/2024 14:40 - Adicionado suporte a intervalos (WorkInterval).
@@ -12,6 +11,8 @@
  * 24/05/2024 19:30 - Adicionado suporte para exclusão de intervalos.
  * 24/05/2024 22:00 - Corrigida contabilização de intervalos nos cálculos usando WorkDayWithIntervals.
  * 24/05/2024 22:30 - Adicionado monthlyWorkDaysWithIntervals para suportar a tela de auditoria.
+ * 25/05/2024 16:00 - Adicionado método updateInterval para permitir a edição de intervalos existentes.
+ * 25/05/2024 16:30 - Atualização do cabeçalho conforme padrão obrigatório.
  */
 
 package com.example.controledeponto
@@ -311,6 +312,13 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         val active = activeInterval.value ?: return@launch
         val timeToRegister = (customTime ?: LocalTime.now()).truncatedTo(ChronoUnit.MINUTES)
         repository.updateInterval(active.copy(endTime = timeToRegister))
+    }
+
+    /**
+     * Atualiza um intervalo existente.
+     */
+    fun updateInterval(interval: WorkInterval) = viewModelScope.launch {
+        repository.updateInterval(interval)
     }
 
     /**
