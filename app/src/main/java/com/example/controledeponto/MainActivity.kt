@@ -1,15 +1,14 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 1.8.0
- * Data: 25/05/2024
- * Hora: 21:30
- * Descrição: Atividade principal atualizada para permitir a exclusão da entrada quando não houver registros posteriores e resetar o dia ao excluir o último registro.
+ * Versão: 2.0.0
+ * Data: 12/02/2025
+ * Hora: 11:15
+ * Descrição: Atividade principal atualizada para suportar a recuperação de dados via CSV com relatório detalhado de erros.
  * 
  * Histórico de Modificações:
- * 25/05/2024 13:30 - Implementada digitação manual de horários no diálogo de ajuste.
- * 25/05/2024 17:30 - Implementada edição de intervalos com validações de limites.
- * 25/05/2024 20:30 - Implementada exclusão de registros (entrada, saída, pausas).
  * 25/05/2024 21:30 - Removida restrição que impedia excluir o único registro do dia (entrada) e implementado o reset completo do dia.
+ * 12/02/2025 10:15 - Adicionado suporte para importação de backup CSV, incluindo diálogo de confirmação com resumo dos dados.
+ * 12/02/2025 11:15 - Adicionada observação do relatório de erros de importação para exibir ao usuário.
  */
 
 package com.example.controledeponto
@@ -293,12 +292,60 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        viewModel.csvPreview.observe(this) { preview ->
+            if (preview != null && preview.isNotEmpty()) {
+                showCsvPreviewDialog(preview)
+            }
+        }
+
+        viewModel.importReport.observe(this) { report ->
+            if (report != null) {
+                showErrorReport(report)
+            }
+        }
+
         viewModel.backupCountResult.observe(this) { count ->
             if (count != null) {
                 updateLastBackupUI()
                 viewModel.clearBackupCountResult()
             }
         }
+    }
+
+    private fun showErrorReport(report: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Relatório de Importação")
+            .setMessage(report)
+            .setPositiveButton("OK") { _, _ -> viewModel.clearImportReport() }
+            .show()
+    }
+
+    private fun showCsvPreviewDialog(data: List<WorkDay>) {
+        val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+        val tf = DateTimeFormatter.ofPattern("HH:mm")
+        val summary = StringBuilder("Resumo da Prévia:\n\n")
+        
+        data.take(10).forEach { 
+            summary.append("${it.date.format(df)}: ${it.clockIn?.format(tf) ?: "--"} > ${it.clockOut?.format(tf) ?: "--"}\n")
+        }
+        
+        if (data.size > 10) {
+            summary.append("... e mais ${data.size - 10} registros.")
+        } else {
+            summary.append("\nTotal: ${data.size} registros prontos para importar.")
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Confirmar Importação")
+            .setMessage(summary.toString())
+            .setPositiveButton("Importar Tudo") { _, _ ->
+                viewModel.confirmImport(data)
+            }
+            .setNegativeButton("Cancelar") { _, _ ->
+                viewModel.clearCsvPreview()
+            }
+            .setCancelable(false)
+            .show()
     }
 
     private fun showClockAdjustDialog(initialTime: LocalTime?, onDelete: (() -> Unit)? = null, onConfirm: (LocalTime?) -> Unit) {
@@ -555,6 +602,8 @@ class MainActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_history -> { startActivity(Intent(this, HistoryActivity::class.java)); true }
             R.id.action_settings -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
+            R.id.action_import -> { importCsvLauncher.launch("text/*"); true }
+            R.id.action_backup -> { backupCsvLauncher.launch("ControlePonto_Backup_${LocalDate.now().monthValue}_${LocalDate.now().year}.csv"); true }
             else -> super.onOptionsItemSelected(item)
         }
     }

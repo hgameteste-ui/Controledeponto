@@ -1,13 +1,16 @@
 /*
  * Nome: WorkViewModel.kt
- * Versão: 1.9.0
- * Data: 25/05/2024
- * Hora: 21:00
- * Descrição: ViewModel atualizado para gerenciar a exclusão completa de dias de trabalho e registros individuais.
+ * Versão: 2.6.0
+ * Data: 12/02/2025
+ * Hora: 14:00
+ * Descrição: ViewModel responsável pela lógica de negócio, com importação de CSV corrigida para evitar erro de limite negativo no split.
  * 
  * Histórico de Modificações:
- * 25/05/2024 20:00 - Implementada a lógica de atualização de WorkDay para permitir "limpar" campos.
  * 25/05/2024 21:00 - Adicionado método deleteWorkDay para permitir resetar o estado do dia completamente.
+ * 12/02/2025 11:00 - Corrigida falha na importação de linhas com campos vazios, adicionado suporte a BOM e relatório detalhado.
+ * 12/02/2025 13:00 - Refinada lógica de detecção de colunas e relatório estatístico.
+ * 12/02/2025 13:30 - Removida restrição rígida de 5 colunas.
+ * 12/02/2025 14:00 - Corrigido erro "Limit must be non-negative" ao remover o parâmetro limit = -1 do split, incompatível com Kotlin.
  */
 
 package com.example.controledeponto
@@ -22,7 +25,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -156,6 +161,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isProcessing = MutableLiveData<Boolean>(false)
     val isProcessing: LiveData<Boolean> = _isProcessing
+
+    private val _csvPreview = MutableLiveData<List<WorkDay>?>()
+    val csvPreview: LiveData<List<WorkDay>?> = _csvPreview
+
+    private val _importReport = MutableLiveData<String?>()
+    val importReport: LiveData<String?> = _importReport
 
     private fun calculateBusinessDays(date: LocalDate): Int {
         var count = 0
@@ -376,36 +387,145 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun flexibleParseDate(dateStr: String): LocalDate? {
+        val formats = listOf("dd/MM/yyyy", "d/M/yyyy", "dd/MM/yy", "d/M/yy", "yyyy-MM-dd", "yyyy/MM/dd")
+        for (format in formats) {
+            try {
+                return LocalDate.parse(dateStr, DateTimeFormatter.ofPattern(format))
+            } catch (e: Exception) {}
+        }
+        return try { LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE) } catch(e: Exception) { null }
+    }
+
+    private fun flexibleParseTime(timeStr: String): LocalTime? {
+        val clean = timeStr.trim()
+        if (clean.isEmpty()) return null
+        val formats = listOf("HH:mm", "H:mm", "HH:mm:ss", "H:mm:ss")
+        for (format in formats) {
+            try {
+                return LocalTime.parse(clean, DateTimeFormatter.ofPattern(format))
+            } catch (e: Exception) {}
+        }
+        return null
+    }
+
     fun importCsv(uri: Uri) = viewModelScope.launch {
-        _importStatus.postValue("Importando registros...")
-        var count = 0
+        _isProcessing.postValue(true)
+        val previewList = mutableListOf<WorkDay>()
+        val detailReport = StringBuilder()
+        var totalLinesInFile = 0
+        var processedLines = 0
+        var validRecords = 0
+        var errorCount = 0
+        var ignoredCount = 0
+
         try {
             withContext(Dispatchers.IO) {
                 val inputStream = getApplication<Application>().contentResolver.openInputStream(uri) ?: return@withContext
-                val content = inputStream.bufferedReader().use { it.readText() }
-                val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yy")
-                val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-                content.lines().forEachIndexed { index, line ->
-                    if (index == 0 || line.isBlank()) return@forEachIndexed
+                val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
+                
+                reader.lineSequence().forEachIndexed { index, rawLine ->
+                    totalLinesInFile++
+                    val line = rawLine.replace("\uFEFF", "").trim()
+                    
+                    if (index == 0) {
+                        Log.d("WorkViewModel", "Pulando cabeçalho (Linha 0): '$line'")
+                        return@forEachIndexed
+                    }
+                    
+                    processedLines++
+                    if (line.isEmpty()) {
+                        ignoredCount++
+                        Log.d("WorkViewModel", "Linha $index vazia ignorada.")
+                        return@forEachIndexed
+                    }
+                    
+                    // Corrigido: Removido limit = -1 que causava IllegalArgumentException em Kotlin
                     val parts = line.split(";").map { it.trim().removeSurrounding("\"") }
-                    if (parts.size >= 2) {
-                        try {
-                            val date = LocalDate.parse(if (parts[0].contains(",")) parts[0].split(",")[1].trim() else parts[0], dateFormatter)
-                            val clockIn = try { LocalTime.parse(parts[1], timeFormatter) } catch (e: Exception) { null }
-                            if (clockIn != null) {
-                                repository.insert(WorkDay(date, clockIn,
-                                    try { LocalTime.parse(parts[2], timeFormatter) } catch(e:Exception){null},
-                                    try { LocalTime.parse(parts[3], timeFormatter) } catch(e:Exception){null},
-                                    try { LocalTime.parse(parts[4], timeFormatter) } catch(e:Exception){null}, false))
-                                count++
-                            }
-                        } catch (e: Exception) { Log.e("WorkViewModel", "Erro linha $index") }
+                    Log.d("WorkViewModel", "Lendo Linha $index (Colunas: ${parts.size}): $parts")
+
+                    if (parts.isNotEmpty()) {
+                        val date = flexibleParseDate(parts[0])
+                        if (date == null) {
+                            errorCount++
+                            val msg = "Linha ${index + 1}: Data '${parts[0]}' inválida. Use dd/MM/yyyy."
+                            detailReport.append(msg).append("\n")
+                            Log.e("WorkViewModel", msg)
+                            return@forEachIndexed
+                        }
+
+                        val clockIn = if (parts.size > 1) flexibleParseTime(parts[1]) else null
+                        val breakStart = if (parts.size > 2) flexibleParseTime(parts[2]) else null
+                        val breakEnd = if (parts.size > 3) flexibleParseTime(parts[3]) else null
+                        val clockOut = if (parts.size > 4) flexibleParseTime(parts[4]) else null
+                        
+                        // Registro válido se tiver data + pelo menos um horário ou se for um dia útil (meta 0)
+                        if (clockIn != null || clockOut != null || breakStart != null || breakEnd != null) {
+                            previewList.add(WorkDay(date, clockIn, breakStart, breakEnd, clockOut))
+                            validRecords++
+                            Log.d("WorkViewModel", "Linha $index validada: $date")
+                        } else {
+                            ignoredCount++
+                            val msg = "Linha ${index + 1}: Data $date sem horários. Ignorada."
+                            detailReport.append(msg).append("\n")
+                            Log.w("WorkViewModel", msg)
+                        }
+                    } else {
+                        ignoredCount++
+                        Log.w("WorkViewModel", "Linha $index sem colunas.")
                     }
                 }
             }
-            _importStatus.postValue("Sucesso! $count registros importados.")
-        } catch (e: Exception) { _importStatus.postValue("Erro: ${e.message}") }
+            
+            val summary = "Relatório de Leitura:\n" +
+                          "- Linhas no arquivo: $totalLinesInFile\n" +
+                          "- Linhas de dados processadas: $processedLines\n" +
+                          "- Registros válidos (com horários): $validRecords\n" +
+                          "- Linhas ignoradas (vazias/sem dados): $ignoredCount\n" +
+                          "- Linhas com erro de formato: $errorCount\n\n"
+            
+            _importReport.postValue(summary + (if (detailReport.isNotEmpty()) "Problemas encontrados:\n$detailReport" else "Nenhum erro de parsing detectado."))
+
+            if (previewList.isEmpty()) {
+                _importStatus.postValue("Nenhum registro para importar. Verifique se o arquivo segue o formato.")
+            } else {
+                _csvPreview.postValue(previewList)
+            }
+        } catch (e: Exception) {
+            _importStatus.postValue("Falha crítica ao ler arquivo: ${e.message}")
+            Log.e("WorkViewModel", "Erro em importCsv", e)
+        } finally {
+            _isProcessing.postValue(false)
+        }
     }
+
+    fun confirmImport(data: List<WorkDay>) = viewModelScope.launch {
+        _isProcessing.postValue(true)
+        var importedCount = 0
+        var duplicateCount = 0
+        try {
+            withContext(Dispatchers.IO) {
+                data.forEach { workDay ->
+                    val existing = repository.getWorkDaySync(workDay.date)
+                    if (existing == null) {
+                        repository.insert(workDay)
+                        importedCount++
+                    } else {
+                        duplicateCount++
+                    }
+                }
+            }
+            _importStatus.postValue("Importação Concluída: $importedCount novos, $duplicateCount já existiam.")
+            _csvPreview.postValue(null)
+        } catch (e: Exception) {
+            _importStatus.postValue("Erro ao salvar registros: ${e.message}")
+        } finally {
+            _isProcessing.postValue(false)
+        }
+    }
+
+    fun clearCsvPreview() { _csvPreview.value = null }
+    fun clearImportReport() { _importReport.value = null }
 
     fun exportCsv(uri: Uri) = viewModelScope.launch {
         try {
