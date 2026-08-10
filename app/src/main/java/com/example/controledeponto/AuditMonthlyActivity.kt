@@ -1,13 +1,17 @@
 /*
  * Nome: AuditMonthlyActivity.kt
- * Versão: 2.4.0
- * Data: 24/05/2024
- * Hora: 23:30
+ * Versão: 2.8.0
+ * Data: 12/02/2025
+ * Hora: 16:30
  * Descrição: Tela de auditoria detalhada que lista todos os registros do mês.
- * Atualizada para considerar múltiplos intervalos nos cálculos de saldo e exibição.
+ * Atualizada para exibir o tempo individual de cada intervalo e o total por categoria.
  * 
  * Histórico de Modificações:
  * 24/05/2024 23:30 - Alterada para usar WorkDayWithIntervals, garantindo contabilização correta de pausas nos totais.
+ * 12/02/2025 15:10 - Adicionada chamada ao updateAuditUi() no onCreate para carregar dados iniciais.
+ * 12/02/2025 15:30 - Melhorada a exibição de intervalos e pausas no adapter.
+ * 12/02/2025 16:00 - Adicionado cálculo e exibição do tempo total por categoria de intervalo.
+ * 12/02/2025 16:30 - Refinada a formatação de duração para incluir tempo individual e total formatado.
  */
 
 package com.example.controledeponto
@@ -15,6 +19,7 @@ package com.example.controledeponto
 import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -24,8 +29,10 @@ import com.example.controledeponto.databinding.ActivityAuditMonthlyBinding
 import com.example.controledeponto.databinding.ItemAuditDayBinding
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 class AuditMonthlyActivity : AppCompatActivity() {
@@ -51,6 +58,8 @@ class AuditMonthlyActivity : AppCompatActivity() {
         setupRecyclerView()
         setupObservers()
         setupListeners()
+        
+        updateAuditUi()
     }
 
     private fun setupListeners() {
@@ -121,6 +130,12 @@ class AuditMonthlyActivity : AppCompatActivity() {
 
         override fun getItemCount() = items.size
 
+        private fun formatDuration(minutes: Long): String {
+            val h = minutes / 60
+            val m = minutes % 60
+            return if (h > 0) String.format("%02dh %02dm", h, m) else String.format("%02dm", m)
+        }
+
         inner class ViewHolder(private val itemBinding: ItemAuditDayBinding) : RecyclerView.ViewHolder(itemBinding.root) {
             fun bind(item: AuditItem) {
                 val dayWithIntervals = item.dayWithIntervals
@@ -130,20 +145,54 @@ class AuditMonthlyActivity : AppCompatActivity() {
 
                 val ent = day.clockIn?.format(timeFormatter) ?: "--:--"
                 val sai = day.clockOut?.format(timeFormatter) ?: "--:--"
+                itemBinding.tvTimes.text = "Entrada: $ent | Saída: $sai"
+
+                // Lógica para Intervalos Regulares (Legado + Novos do tipo LUNCH)
+                val regularDetails = mutableListOf<String>()
+                var regularTotalMinutes = 0L
                 
-                // Exibe resumo de intervalos (legado ou novos)
-                val breakText = if (dayWithIntervals.intervals.isNotEmpty()) {
-                    val totalBreak = dayWithIntervals.intervals.sumOf { 
-                        java.time.temporal.ChronoUnit.MINUTES.between(it.startTime, it.endTime ?: it.startTime)
-                    }
-                    "${dayWithIntervals.intervals.size} pausas (${totalBreak}m)"
-                } else {
-                    val i1 = day.breakStart?.format(timeFormatter) ?: "--:--"
-                    val i2 = day.breakEnd?.format(timeFormatter) ?: "--:--"
-                    "$i1 - $i2"
+                // Intervalo legado (breakStart/End)
+                if (day.breakStart != null) {
+                    val bStart = day.breakStart
+                    val bEnd = day.breakEnd ?: (if (day.date == LocalDate.now()) LocalTime.now() else bStart)
+                    val diff = ChronoUnit.MINUTES.between(bStart, bEnd).coerceAtLeast(0)
+                    regularTotalMinutes += diff
+                    regularDetails.add("${bStart.format(timeFormatter)} - ${bEnd.format(timeFormatter)} (${formatDuration(diff)})")
                 }
                 
-                itemBinding.tvTimes.text = "Ent: $ent | Int: $breakText | Saí: $sai"
+                // Novos intervalos marcados como Almoço
+                val lunchIntervals = dayWithIntervals.intervals.filter { it.type == IntervalType.LUNCH }
+                lunchIntervals.forEach { interval ->
+                    val iStart = interval.startTime
+                    val iEnd = interval.endTime ?: (if (day.date == LocalDate.now()) LocalTime.now() else iStart)
+                    val diff = ChronoUnit.MINUTES.between(iStart, iEnd).coerceAtLeast(0)
+                    regularTotalMinutes += diff
+                    regularDetails.add("${iStart.format(timeFormatter)} - ${iEnd.format(timeFormatter)} (${formatDuration(diff)})")
+                }
+
+                if (regularDetails.isEmpty()) {
+                    itemBinding.tvIntervalsRegular.visibility = View.GONE
+                } else {
+                    itemBinding.tvIntervalsRegular.visibility = View.VISIBLE
+                    itemBinding.tvIntervalsRegular.text = "Regulares: ${regularDetails.joinToString(" | ")} - Total: ${formatDuration(regularTotalMinutes)}"
+                }
+
+                // Lógica para Pausas (Novos intervalos que NÃO são LUNCH)
+                val otherIntervals = dayWithIntervals.intervals.filter { it.type != IntervalType.LUNCH }
+                if (otherIntervals.isEmpty()) {
+                    itemBinding.tvIntervalsPauses.visibility = View.GONE
+                } else {
+                    itemBinding.tvIntervalsPauses.visibility = View.VISIBLE
+                    var pauseTotalMinutes = 0L
+                    val pausesDetails = otherIntervals.map { interval ->
+                        val iStart = interval.startTime
+                        val iEnd = interval.endTime ?: (if (day.date == LocalDate.now()) LocalTime.now() else iStart)
+                        val diff = ChronoUnit.MINUTES.between(iStart, iEnd).coerceAtLeast(0)
+                        pauseTotalMinutes += diff
+                        "${iStart.format(timeFormatter)}-${iEnd.format(timeFormatter)} (${formatDuration(diff)})"
+                    }
+                    itemBinding.tvIntervalsPauses.text = "Pausas: ${pausesDetails.joinToString(", ")} - Total: ${formatDuration(pauseTotalMinutes)}"
+                }
 
                 val prefs = PreferenceManager.getDefaultSharedPreferences(itemView.context)
                 val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L

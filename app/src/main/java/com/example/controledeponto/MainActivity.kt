@@ -1,14 +1,16 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 2.0.0
+ * Versão: 2.1.0
  * Data: 12/02/2025
- * Hora: 11:15
+ * Hora: 15:00
  * Descrição: Atividade principal atualizada para suportar a recuperação de dados via CSV com relatório detalhado de erros.
+ * Adicionado suporte para todos os itens do menu principal.
  * 
  * Histórico de Modificações:
  * 25/05/2024 21:30 - Removida restrição que impedia excluir o único registro do dia (entrada) e implementado o reset completo do dia.
  * 12/02/2025 10:15 - Adicionado suporte para importação de backup CSV, incluindo diálogo de confirmação com resumo dos dados.
  * 12/02/2025 11:15 - Adicionada observação do relatório de erros de importação para exibir ao usuário.
+ * 12/02/2025 15:00 - Corrigida falha onde itens do menu (Auditoria, Extrato, Feriados) não executavam ação.
  */
 
 package com.example.controledeponto
@@ -600,6 +602,26 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_audit_month -> {
+                startActivity(Intent(this, AuditMonthlyActivity::class.java))
+                true
+            }
+            R.id.action_quarterly_statement -> {
+                startActivity(Intent(this, QuarterlyStatementActivity::class.java))
+                true
+            }
+            R.id.action_manage_holidays -> {
+                startActivity(Intent(this, HolidaysConfigActivity::class.java))
+                true
+            }
+            R.id.action_sync_holidays -> {
+                viewModel.fetchAndSyncHolidays(LocalDate.now().year)
+                true
+            }
+            R.id.action_trigger_backup_flow -> {
+                driveExportLauncher.launch("ControlePonto_FullBackup_${LocalDate.now()}.csv")
+                true
+            }
             R.id.action_history -> { startActivity(Intent(this, HistoryActivity::class.java)); true }
             R.id.action_settings -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
             R.id.action_import -> { importCsvLauncher.launch("text/*"); true }
