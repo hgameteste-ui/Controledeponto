@@ -1,16 +1,10 @@
 /*
  * Nome: WorkDayDao.kt
- * Versão: 1.7.0
- * Data: 25/05/2024
- * Hora: 21:30
+ * Versão: 2.1.0
+ * Data: 12/02/2025
+ * Hora: 20:15
  * Descrição: Interface DAO para gerenciar registros de dias de trabalho.
- * 
- * Histórico de Modificações:
- * 24/05/2024 21:15 - Adicionados métodos para buscar WorkDayWithIntervals.
- * 24/05/2024 21:45 - Substituído @Insert(REPLACE) por @Upsert para preservar intervalos relacionados.
- * 25/05/2024 14:00 - Atualizada documentação e garantida integridade dos métodos de busca agregada.
- * 25/05/2024 18:00 - Revisão final e atualização de cabeçalho para suporte a edição de intervalos.
- * 25/05/2024 21:30 - Adicionado método de exclusão de dia de trabalho.
+ * Atualizada: Utilizando @Upsert para evitar a exclusão em cascata de intervalos ao atualizar feriados.
  */
 
 package com.example.controledeponto

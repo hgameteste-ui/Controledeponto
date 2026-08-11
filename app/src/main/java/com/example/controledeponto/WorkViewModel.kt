@@ -1,15 +1,10 @@
 /*
  * Nome: WorkViewModel.kt
- * Versão: 2.7.0
+ * Versão: 2.11.0
  * Data: 12/02/2025
- * Hora: 17:15
+ * Hora: 19:45
  * Descrição: ViewModel responsável pela lógica de negócio.
- * Atualizada para suportar a sinalização de faltas (isAbsence).
- * 
- * Histórico de Modificações:
- * 25/05/2024 21:00 - Adicionado método deleteWorkDay para permitir resetar o estado do dia completamente.
- * 12/02/2025 14:00 - Corrigido erro "Limit must be non-negative" ao remover o parâmetro limit = -1 do split.
- * 12/02/2025 17:15 - Adicionado método toggleAbsence para alternar o status de falta do dia.
+ * Limpeza de métodos duplicados e otimização do gerenciamento de feriados.
  */
 
 package com.example.controledeponto
@@ -268,7 +263,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         val date = _selectedDate.value ?: LocalDate.now()
         val current = repository.getWorkDaySync(date) ?: WorkDay(date)
         
-        // Só permite sinalizar falta se não houver registros de ponto
         if (current.clockIn != null || current.clockOut != null) {
             _importStatus.postValue("Não é possível marcar falta em um dia com registros de ponto.")
             return@launch
@@ -352,6 +346,32 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
              return@launch
         }
         repository.insert(workDay) 
+    }
+
+    fun saveHoliday(date: LocalDate, name: String, oldDate: LocalDate? = null) = viewModelScope.launch {
+        try {
+            if (oldDate != null && oldDate != date) {
+                val oldRecord = repository.getWorkDaySync(oldDate)
+                if (oldRecord != null) {
+                    repository.insert(oldRecord.copy(isHolidayOrOffDay = false, holidayName = null))
+                }
+            }
+            val existing = repository.getWorkDaySync(date) ?: WorkDay(date = date)
+            val updated = existing.copy(isHolidayOrOffDay = true, holidayName = name, isAbsence = false)
+            repository.insert(updated)
+            _importStatus.postValue("Salvo: $name")
+        } catch (e: Exception) {
+            _importStatus.postValue("Erro: ${e.localizedMessage}")
+        }
+    }
+
+    fun removeHoliday(workDay: WorkDay) = viewModelScope.launch {
+        try {
+            repository.insert(workDay.copy(isHolidayOrOffDay = false, holidayName = null))
+            _importStatus.postValue("Feriado removido.")
+        } catch (e: Exception) {
+            _importStatus.postValue("Erro: ${e.localizedMessage}")
+        }
     }
 
     fun fetchAndSyncHolidays(year: Int) = viewModelScope.launch(Dispatchers.IO) {
