@@ -1,9 +1,9 @@
-/**
+/*
  * Nome: AppDatabase.kt
- * Data: 12/02/2025
- * Hora: 18:15
+ * Data: 13/02/2025
+ * Hora: 12:00
  * Descrição: Classe abstrata que define o banco de dados Room e suas migrações.
- * Atualizada para versão 5 com suporte a migração e fallback.
+ * Atualizada para versão 6: Migração do modelo híbrido para o modelo único de intervalos.
  */
 
 package com.example.controledeponto
@@ -16,7 +16,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [WorkDay::class, WorkInterval::class], version = 5, exportSchema = false)
+@Database(entities = [WorkDay::class, WorkInterval::class], version = 6, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun workDayDao(): WorkDayDao
@@ -25,6 +25,45 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Transferir dados dos campos legados (breakStart/breakEnd) para a tabela de intervalos
+                db.execSQL("""
+                    INSERT INTO intervals (workDayId, startTime, endTime, type)
+                    SELECT date, breakStart, breakEnd, 'LUNCH'
+                    FROM work_days
+                    WHERE breakStart IS NOT NULL
+                """.trimIndent())
+
+                // 2. Recriar a tabela work_days sem os campos legados
+                // SQLite não suporta DROP COLUMN diretamente de forma simples em todas as versões
+                db.execSQL("""
+                    CREATE TABLE `work_days_new` (
+                        `date` TEXT PRIMARY KEY NOT NULL, 
+                        `clockIn` TEXT, 
+                        `clockOut` TEXT, 
+                        `isHolidayOrOffDay` INTEGER NOT NULL, 
+                        `holidayName` TEXT, 
+                        `isAbsence` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+
+                db.execSQL("""
+                    INSERT INTO work_days_new (date, clockIn, clockOut, isHolidayOrOffDay, holidayName, isAbsence)
+                    SELECT date, clockIn, clockOut, isHolidayOrOffDay, holidayName, isAbsence FROM work_days
+                """.trimIndent())
+
+                db.execSQL("DROP TABLE work_days")
+                db.execSQL("ALTER TABLE work_days_new RENAME TO work_days")
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `work_days` ADD COLUMN `isAbsence` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
 
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -42,13 +81,6 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_4_5 = object : Migration(4, 5) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                // Adiciona a coluna isAbsence como INTEGER (Boolean no Room) com valor padrão 0 (false)
-                db.execSQL("ALTER TABLE `work_days` ADD COLUMN `isAbsence` INTEGER NOT NULL DEFAULT 0")
-            }
-        }
-
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -56,8 +88,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "work_day_database"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
-                    .fallbackToDestructiveMigration() // Garante que o app abra mesmo se a migração falhar
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance

@@ -1,14 +1,10 @@
 /*
  * Nome: WorkDay.kt
- * Versão: 1.3.0
- * Data: 12/02/2025
- * Hora: 17:00
- * Descrição: Entidade que representa um dia de trabalho. 
- * Atualizada para incluir sinalização de falta (isAbsence).
- * 
- * Histórico de Modificações:
- * 25/05/2024 16:00 - Corrigida a lógica de cálculo de minutos para somar intervalos novos e legados.
- * 12/02/2025 17:00 - Adicionado campo isAbsence para permitir contabilizar faltas no saldo de horas.
+ * Versão: 1.4.0
+ * Data: 13/02/2025
+ * Hora: 11:00
+ * Descrição: Entidade que representa um dia de trabalho.
+ * Removidos campos legados de intervalo para usar apenas a lista WorkInterval.
  */
 
 package com.example.controledeponto
@@ -23,8 +19,6 @@ import java.time.temporal.ChronoUnit
 data class WorkDay(
     @PrimaryKey val date: LocalDate = LocalDate.now(),
     val clockIn: LocalTime? = null,
-    val breakStart: LocalTime? = null,
-    val breakEnd: LocalTime? = null,
     val clockOut: LocalTime? = null,
     val isHolidayOrOffDay: Boolean = false,
     val holidayName: String? = null,
@@ -43,29 +37,27 @@ data class WorkDay(
         
         val totalGross = ChronoUnit.MINUTES.between(start, end)
         
-        // Soma os intervalos da nova tabela
-        val intervalsBreakMinutes = intervals.sumOf { interval ->
+        // Soma os intervalos da tabela de intervalos
+        val totalBreakMinutes = intervals.sumOf { interval ->
             val iStart = interval.startTime.truncatedTo(ChronoUnit.MINUTES)
             val iEnd = (interval.endTime ?: if (isToday) now else iStart).truncatedTo(ChronoUnit.MINUTES)
             ChronoUnit.MINUTES.between(iStart, iEnd)
         }
         
-        // Soma o intervalo do sistema legado (campos breakStart/End)
-        val legacyBreakMinutes = calculateBreakMinutes(isToday)
-        
-        val totalBreakMinutes = intervalsBreakMinutes + legacyBreakMinutes
-        
         return (totalGross - totalBreakMinutes).coerceAtLeast(0)
     }
 
     /**
-     * Calcula o total de minutos em pausa usando os campos legados.
+     * Calcula o total de minutos em pausa.
      */
-    fun calculateBreakMinutes(isToday: Boolean = false): Long {
+    fun calculateBreakMinutes(intervals: List<WorkInterval>, isToday: Boolean = false): Long {
         if (isAbsence) return 0L
-        val start = breakStart?.truncatedTo(ChronoUnit.MINUTES) ?: return 0L
-        val end = (breakEnd ?: if (isToday) LocalTime.now() else start).truncatedTo(ChronoUnit.MINUTES)
-        return ChronoUnit.MINUTES.between(start, end).coerceAtLeast(0)
+        val now = LocalTime.now().truncatedTo(ChronoUnit.MINUTES)
+        return intervals.sumOf { interval ->
+            val iStart = interval.startTime.truncatedTo(ChronoUnit.MINUTES)
+            val iEnd = (interval.endTime ?: if (isToday) now else iStart).truncatedTo(ChronoUnit.MINUTES)
+            ChronoUnit.MINUTES.between(iStart, iEnd)
+        }.coerceAtLeast(0)
     }
 
     /**
@@ -78,20 +70,16 @@ data class WorkDay(
         
         val now = LocalTime.now().truncatedTo(ChronoUnit.MINUTES)
         
-        // Se houver qualquer intervalo ativo (novo ou legado), não há predição de saída
+        // Se houver qualquer intervalo ativo, não há predição de saída
         val activeInterval = intervals.find { it.endTime == null }
         if (activeInterval != null) return null
-        if (breakStart != null && breakEnd == null) return null
 
-        val intervalsBreakMinutes = intervals.sumOf { 
+        val totalBreakMinutes = intervals.sumOf { 
             val iStart = it.startTime.truncatedTo(ChronoUnit.MINUTES)
             val iEnd = (it.endTime ?: now).truncatedTo(ChronoUnit.MINUTES)
             ChronoUnit.MINUTES.between(iStart, iEnd)
         }
 
-        val legacyBreakMinutes = calculateBreakMinutes(true)
-        val effectiveBreaks = intervalsBreakMinutes + legacyBreakMinutes
-
-        return "Saída" to start.plusMinutes(targetMinutes).plusMinutes(effectiveBreaks)
+        return "Saída" to start.plusMinutes(targetMinutes).plusMinutes(totalBreakMinutes)
     }
 }

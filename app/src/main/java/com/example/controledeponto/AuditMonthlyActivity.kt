@@ -1,10 +1,10 @@
 /*
  * Nome: AuditMonthlyActivity.kt
- * Versão: 3.3.0
- * Data: 12/02/2025
- * Hora: 22:30
- * Descrição: Tela de auditoria detalhada que lista todos os registros do mês.
- * Atualizada para exibir a linha do tempo detalhada: 08:00 - 12:00 intervalo 01h30 - 13:30 - 18:00.
+ * Versão: 4.0.0
+ * Data: 13/02/2025
+ * Hora: 11:45
+ * Descrição: Tela de auditoria detalhada atualizada para o modelo único de intervalos.
+ * Removidos campos legados e unificada a visualização da linha do tempo.
  */
 
 package com.example.controledeponto
@@ -167,14 +167,7 @@ class AuditMonthlyActivity : AppCompatActivity() {
                     itemBinding.tvTimes.text = "Feriado/Folga: Meta Zero"
                 } else if (ent != null) {
                     val timeline = StringBuilder()
-                    val allBreaks = mutableListOf<Pair<LocalTime, LocalTime>>()
-                    
-                    if (day.breakStart != null) {
-                        allBreaks.add(day.breakStart to (day.breakEnd ?: if (isToday) LocalTime.now() else day.breakStart))
-                    }
-                    dayWithIntervals.intervals.forEach { 
-                        allBreaks.add(it.startTime to (it.endTime ?: if (isToday) LocalTime.now() else it.startTime))
-                    }
+                    val allBreaks = dayWithIntervals.intervals.map { it.startTime to (it.endTime ?: if (isToday) LocalTime.now() else it.startTime) }
                     
                     val validBreaks = allBreaks.filter { !it.first.isBefore(ent) }.sortedBy { it.first }
                     
@@ -190,7 +183,7 @@ class AuditMonthlyActivity : AppCompatActivity() {
                         }
                     }
                     
-                    val inActiveBreak = dayWithIntervals.intervals.any { it.endTime == null } || (day.breakStart != null && day.breakEnd == null)
+                    val inActiveBreak = dayWithIntervals.intervals.any { it.endTime == null }
                     val finalEnd = sai ?: if (isToday && !inActiveBreak) LocalTime.now().truncatedTo(ChronoUnit.MINUTES) else null
                     
                     if (finalEnd != null && !finalEnd.isBefore(lastPointer)) {

@@ -1,13 +1,11 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 2.9.0
+ * Versão: 4.2.3
  * Data: 13/02/2025
- * Hora: 10:15
- * Descrição: Atividade principal atualizada com linha do tempo detalhada e duração de intervalos entre os turnos.
- * 
- * Histórico de Modificações:
- * 12/02/2025 22:00 - Refinada a linha do tempo para intercalar períodos de trabalho e duração de intervalos.
- * 13/02/2025 10:15 - Ajustada a formatação da timeline e duração de intervalos legados.
+ * Hora: 12:55
+ * Descrição: Atividade principal atualizada para o modelo único de intervalos.
+ * Removidos campos legados, unificada a gestão de pausas e removidos elementos visuais (timeline/progress).
+ * Corrigido erro de contexto no Intent de configurações.
  */
 
 package com.example.controledeponto
@@ -240,8 +238,6 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.selectedWorkDay.observe(this) { workDay ->
             binding.tvClockIn.text = workDay?.clockIn?.format(timeFormatter) ?: "--:--"
-            binding.tvBreakStart.text = workDay?.breakStart?.format(timeFormatter) ?: "--:--"
-            binding.tvBreakEnd.text = workDay?.breakEnd?.format(timeFormatter) ?: "--:--"
             binding.tvClockOut.text = workDay?.clockOut?.format(timeFormatter) ?: "--:--"
             
             if (workDay?.isHolidayOrOffDay == true) {
@@ -273,7 +269,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 binding.tvIntervalStatus.text = "Status: Trabalhando"
                 binding.tvIntervalStatus.setTextColor(resources.getColor(R.color.purple_500, theme))
-                binding.btnStartInterval.isEnabled = viewModel.selectedWorkDay.value?.isAbsence != true
+                binding.btnStartInterval.isEnabled = viewModel.selectedWorkDay.value?.isAbsence != true && viewModel.selectedWorkDay.value?.clockIn != null && viewModel.selectedWorkDay.value?.clockOut == null
                 binding.btnEndInterval.isEnabled = false
             }
             updateStats(viewModel.selectedWorkDay.value)
@@ -281,7 +277,23 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.intervals.observe(this) { list ->
             intervalAdapter.submitList(list)
+            
+            // Popula os campos do intervalo "legado" (topo) com a primeira pausa da lista
+            val firstInterval = list.sortedBy { it.startTime }.firstOrNull()
+            binding.tvBreakStart.text = firstInterval?.startTime?.format(timeFormatter) ?: "--:--"
+            binding.tvBreakEnd.text = firstInterval?.endTime?.format(timeFormatter) ?: "--:--"
+            
+            if (firstInterval != null) {
+                val end = firstInterval.endTime ?: if (viewModel.selectedDate.value == LocalDate.now()) LocalTime.now() else firstInterval.startTime
+                val dur = ChronoUnit.MINUTES.between(firstInterval.startTime, end).coerceAtLeast(0)
+                binding.tvLegacyIntervalDuration.text = "intervalo ${formatDurationTimeline(dur)}"
+                binding.tvLegacyIntervalDuration.visibility = View.VISIBLE
+            } else {
+                binding.tvLegacyIntervalDuration.visibility = View.GONE
+            }
+
             updateStats(viewModel.selectedWorkDay.value)
+            updateButtonUI(viewModel.selectedWorkDay.value)
         }
 
         viewModel.monthlyBalanceMinutes.observe(this) { updateMonthlySummary() }
@@ -482,80 +494,19 @@ class MainActivity : AppCompatActivity() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val targetMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
         val selectedDate = viewModel.selectedDate.value ?: LocalDate.now()
-        val isToday = selectedDate == LocalDate.now()
         val currentIntervals = viewModel.intervals.value ?: emptyList()
         
-        val totalWorked = workDay?.calculateTotalMinutes(currentIntervals, isToday) ?: 0L
+        val totalWorked = workDay?.calculateTotalMinutes(currentIntervals, selectedDate == LocalDate.now()) ?: 0L
         binding.tvTotalWorked.text = formatTime(totalWorked)
         
-        val legacyBreak = workDay?.calculateBreakMinutes(isToday) ?: 0L
-        val newBreaks = currentIntervals.sumOf { 
-            val end = it.endTime ?: if (isToday) LocalTime.now() else it.startTime
-            ChronoUnit.MINUTES.between(it.startTime, end)
-        }
-        val totalInterval = legacyBreak + newBreaks
+        val totalInterval = workDay?.calculateBreakMinutes(currentIntervals, selectedDate == LocalDate.now()) ?: 0L
         binding.tvTotalBreakTime.text = "Total em Intervalo: ${formatTime(totalInterval)}"
-        
-        // Atualiza a duração do intervalo legado na UI principal (entre os turnos)
-        if (workDay?.breakStart != null) {
-            val end = workDay.breakEnd ?: if (isToday) LocalTime.now() else workDay.breakStart
-            val dur = ChronoUnit.MINUTES.between(workDay.breakStart, end).coerceAtLeast(0)
-            binding.tvLegacyIntervalDuration.text = "intervalo ${formatDurationTimeline(dur)}"
-            binding.tvLegacyIntervalDuration.visibility = View.VISIBLE
-        } else {
-            binding.tvLegacyIntervalDuration.visibility = View.GONE
-        }
-
-        // CONSTRUÇÃO DA LINHA DO TEMPO DETALHADA
-        val ent = workDay?.clockIn
-        if (ent != null && workDay.isAbsence != true) {
-            val timeline = StringBuilder()
-            val allBreaks = mutableListOf<Pair<LocalTime, LocalTime>>()
-            if (workDay.breakStart != null) {
-                allBreaks.add(workDay.breakStart to (workDay.breakEnd ?: if (isToday) LocalTime.now() else workDay.breakStart))
-            }
-            currentIntervals.forEach { 
-                allBreaks.add(it.startTime to (it.endTime ?: if (isToday) LocalTime.now() else it.startTime))
-            }
-            val validBreaks = allBreaks.filter { !it.first.isBefore(ent) }.sortedBy { it.first }
-            
-            timeline.append(ent.format(timeFormatter))
-            var lastPointer = ent
-            validBreaks.forEach { brk ->
-                if (!brk.first.isBefore(lastPointer)) {
-                    timeline.append(" - ").append(brk.first.format(timeFormatter))
-                    val dur = ChronoUnit.MINUTES.between(brk.first, brk.second).coerceAtLeast(0)
-                    timeline.append(" intervalo ").append(formatDurationTimeline(dur))
-                    timeline.append(" - ").append(brk.second.format(timeFormatter))
-                    lastPointer = brk.second
-                }
-            }
-
-            val inActiveBreak = currentIntervals.any { it.endTime == null } || (workDay.breakStart != null && workDay.breakEnd == null)
-            val finalEnd = workDay.clockOut ?: if (isToday && !inActiveBreak) LocalTime.now().truncatedTo(ChronoUnit.MINUTES) else null
-            
-            if (finalEnd != null && !finalEnd.isBefore(lastPointer)) {
-                timeline.append(" - ").append(finalEnd.format(timeFormatter))
-            } else if (inActiveBreak) {
-                timeline.append(" - [EM PAUSA]")
-            } else if (workDay.clockOut == null && !isToday) {
-                timeline.append(" - [EM ABERTO]")
-            }
-
-            binding.tvDayTimeline.text = timeline.toString()
-            binding.tvDayTimeline.visibility = View.VISIBLE
-        } else {
-            binding.tvDayTimeline.visibility = View.GONE
-        }
 
         val effectiveGoal = if (selectedDate.dayOfWeek.value > 5 || workDay?.isHolidayOrOffDay == true) 0L else targetMinutes
         val balance = totalWorked - effectiveGoal
         binding.tvDailyOvertime.text = (if (balance >= 0) "+" else "-") + formatTime(balance)
         binding.tvDailyOvertime.setTextColor(resources.getColor(if (balance >= 0) android.R.color.holo_green_dark else android.R.color.holo_red_dark, theme))
         
-        binding.progressWork.max = targetMinutes.toInt()
-        binding.progressWork.progress = totalWorked.toInt().coerceAtMost(targetMinutes.toInt())
-
         val nextEvent = workDay?.getNextPrediction(targetMinutes, currentIntervals)
         binding.tvPrediction.text = when {
             workDay?.isAbsence == true -> "Dia de Falta Sinalizada"
@@ -578,11 +529,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateButtonUI(workDay: WorkDay?) {
+        val currentIntervals = viewModel.intervals.value ?: emptyList()
+        val active = currentIntervals.find { it.endTime == null }
+        
         val label = when {
             workDay == null || workDay.clockIn == null -> "ENTRADA"
-            workDay.breakStart == null -> "INÍCIO PAUSA"
-            workDay.breakEnd == null -> "FIM PAUSA"
-            workDay.clockOut == null -> "SAÍDA"
+            active != null -> "FIM PAUSA"
+            workDay.clockOut == null -> {
+                if (currentIntervals.isEmpty()) "INÍCIO PAUSA" else "SAÍDA"
+            }
             else -> "CONCLUÍDO"
         }
         binding.btnPunch.text = label
@@ -604,81 +559,58 @@ class MainActivity : AppCompatActivity() {
     private fun setupManualEdits(workDay: WorkDay?) {
         val date = viewModel.selectedDate.value ?: LocalDate.now()
         val current = workDay ?: WorkDay(date)
+        val currentIntervals = viewModel.intervals.value ?: emptyList()
+        val firstInterval = currentIntervals.sortedBy { it.startTime }.firstOrNull()
+
         val listener = View.OnClickListener { view ->
             if (current.isAbsence) {
                 Snackbar.make(binding.root, "Remova a sinalização de falta para editar horários.", Snackbar.LENGTH_LONG).show()
                 return@OnClickListener
             }
 
-            val time = when(view.id) {
-                R.id.tvClockIn, R.id.lblClockIn -> current.clockIn
-                R.id.tvBreakStart, R.id.lblBreakStart -> current.breakStart
-                R.id.tvBreakEnd, R.id.lblBreakEnd -> current.breakEnd
-                R.id.tvClockOut, R.id.lblClockOut -> current.clockOut
-                else -> null
-            }
-            
-            val deleteAction: (() -> Unit)? = if (time != null) {
-                {
-                    val canDelete = canDeleteRecord(view.id, current)
-                    if (canDelete == null) {
-                        val totalIntervals = viewModel.intervals.value?.size ?: 0
-                        val fields = listOf(current.clockIn, current.breakStart, current.breakEnd, current.clockOut)
-                        val activeFields = fields.count { it != null }
-
-                        if (activeFields + totalIntervals == 1 && !current.isHolidayOrOffDay) {
-                             viewModel.deleteWorkDay(current)
+            when(view.id) {
+                R.id.tvClockIn, R.id.lblClockIn -> {
+                    showClockAdjustDialog(current.clockIn, if (current.clockIn != null) ({ 
+                        if (current.clockOut != null || currentIntervals.isNotEmpty()) {
+                             Snackbar.make(binding.root, "Exclua os registros posteriores antes de remover a entrada.", Snackbar.LENGTH_LONG).show()
                         } else {
-                            val updated = when(view.id) {
-                                R.id.tvClockIn, R.id.lblClockIn -> current.copy(clockIn = null)
-                                R.id.tvBreakStart, R.id.lblBreakStart -> current.copy(breakStart = null)
-                                R.id.tvBreakEnd, R.id.lblBreakEnd -> current.copy(breakEnd = null)
-                                R.id.tvClockOut, R.id.lblClockOut -> current.copy(clockOut = null)
-                                else -> current
-                            }
-                            viewModel.updateWorkDay(updated)
+                            viewModel.deleteWorkDay(current)
                         }
-                    } else {
-                        Snackbar.make(binding.root, canDelete, Snackbar.LENGTH_LONG).show()
+                    }) else null) { newTime ->
+                        viewModel.updateWorkDay(current.copy(clockIn = newTime))
                     }
                 }
-            } else null
-
-            showClockAdjustDialog(time, deleteAction) { newTime ->
-                val updated = when(view.id) {
-                    R.id.tvClockIn, R.id.lblClockIn -> current.copy(clockIn = newTime)
-                    R.id.tvBreakStart, R.id.lblBreakStart -> current.copy(breakStart = newTime)
-                    R.id.tvBreakEnd, R.id.lblBreakEnd -> current.copy(breakEnd = newTime)
-                    R.id.tvClockOut, R.id.lblClockOut -> current.copy(clockOut = newTime)
-                    else -> current
+                R.id.tvBreakStart, R.id.lblBreakStart -> {
+                    if (firstInterval != null) {
+                        showEditIntervalDialog(firstInterval)
+                    } else {
+                        showClockAdjustDialog(null) { newTime ->
+                            if (newTime != null) viewModel.startInterval("LUNCH", newTime)
+                        }
+                    }
                 }
-                viewModel.updateWorkDay(updated)
+                R.id.tvBreakEnd, R.id.lblBreakEnd -> {
+                    if (firstInterval != null) {
+                        showEditIntervalDialog(firstInterval)
+                    } else {
+                        showClockAdjustDialog(null) { newTime ->
+                            if (newTime != null) viewModel.endInterval(newTime)
+                        }
+                    }
+                }
+                R.id.tvClockOut, R.id.lblClockOut -> {
+                    showClockAdjustDialog(current.clockOut, if (current.clockOut != null) ({ 
+                        viewModel.updateWorkDay(current.copy(clockOut = null))
+                    }) else null) { newTime ->
+                        viewModel.updateWorkDay(current.copy(clockOut = newTime))
+                    }
+                }
             }
         }
         binding.tvClockIn.setOnClickListener(listener); binding.lblClockIn.setOnClickListener(listener)
         binding.tvBreakStart.setOnClickListener(listener); binding.lblBreakStart.setOnClickListener(listener)
         binding.tvBreakEnd.setOnClickListener(listener); binding.lblBreakEnd.setOnClickListener(listener)
         binding.tvClockOut.setOnClickListener(listener); binding.lblClockOut.setOnClickListener(listener)
-    }
-
-    private fun canDeleteRecord(viewId: Int, workDay: WorkDay): String? {
-        val totalIntervals = viewModel.intervals.value?.size ?: 0
-
-        return when (viewId) {
-            R.id.tvClockIn, R.id.lblClockIn -> {
-                if (workDay.clockOut != null || workDay.breakStart != null || totalIntervals > 0) 
-                    "Exclua os registros posteriores antes de remover a entrada."
-                else null
-            }
-            R.id.tvBreakStart, R.id.lblBreakStart -> {
-                if (workDay.breakEnd != null) "Exclua o fim do intervalo antes de remover o início."
-                else null
-            }
-            R.id.tvClockOut, R.id.lblClockOut -> {
-                null
-            }
-            else -> null
-        }
     }
 
     private fun showDatePicker() {

@@ -1,10 +1,10 @@
 /*
  * Nome: WorkViewModel.kt
- * Versão: 2.11.0
- * Data: 12/02/2025
- * Hora: 19:45
- * Descrição: ViewModel responsável pela lógica de negócio.
- * Limpeza de métodos duplicados e otimização do gerenciamento de feriados.
+ * Versão: 3.0.0
+ * Data: 13/02/2025
+ * Hora: 11:15
+ * Descrição: ViewModel atualizado para modelo único de intervalos.
+ * Removida lógica de campos legados (breakStart/End) em favor da tabela WorkInterval.
  */
 
 package com.example.controledeponto
@@ -276,20 +276,38 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         val date = _selectedDate.value ?: LocalDate.now()
         val timeToRegister = (customTime ?: LocalTime.now()).truncatedTo(ChronoUnit.MINUTES)
         val current = repository.getWorkDaySync(date) ?: WorkDay(date)
+        val currentIntervals = intervals.value ?: emptyList()
+        val active = activeInterval.value
         
         if (current.isAbsence) {
             _importStatus.postValue("Remova a sinalização de falta antes de registrar ponto.")
             return@launch
         }
 
-        val updated = when {
-            current.clockIn == null -> current.copy(clockIn = timeToRegister)
-            current.breakStart == null -> current.copy(breakStart = timeToRegister)
-            current.breakEnd == null -> current.copy(breakEnd = timeToRegister)
-            current.clockOut == null -> current.copy(clockOut = timeToRegister)
-            else -> current
+        when {
+            current.clockIn == null -> {
+                repository.insert(current.copy(clockIn = timeToRegister))
+            }
+            active != null -> {
+                // Se houver intervalo ativo, finaliza-o (equivalente ao antigo breakEnd)
+                repository.updateInterval(active.copy(endTime = timeToRegister))
+            }
+            current.clockOut == null -> {
+                // Se não houver intervalo ativo, inicia um novo ou finaliza o dia
+                // Regra: Se já temos a entrada mas não temos saída, o botão alterna entre
+                // INICIAR INTERVALO e FINALIZAR DIA dependendo do contexto.
+                // Para manter compatibilidade com a "máquina de estados" do botão Punch:
+                // Se não há intervalos registrados, o próximo passo do Punch é INICIAR INTERVALO.
+                if (currentIntervals.isEmpty()) {
+                    startInterval("LUNCH", timeToRegister)
+                } else {
+                    repository.insert(current.copy(clockOut = timeToRegister))
+                }
+            }
+            else -> {
+                Log.d("WorkViewModel", "Jornada já concluída para este dia.")
+            }
         }
-        repository.insert(updated)
     }
 
     fun startInterval(type: String = "BREAK", customTime: LocalTime? = null) = viewModelScope.launch {
@@ -475,14 +493,26 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                         }
 
                         val clockIn = if (parts.size > 1) flexibleParseTime(parts[1]) else null
+                        // Nota: O importador CSV aqui ainda assume o formato antigo de colunas
+                        // Para o modelo único, idealmente breakStart/End seriam convertidos em intervalos.
                         val breakStart = if (parts.size > 2) flexibleParseTime(parts[2]) else null
                         val breakEnd = if (parts.size > 3) flexibleParseTime(parts[3]) else null
                         val clockOut = if (parts.size > 4) flexibleParseTime(parts[4]) else null
                         
                         if (clockIn != null || clockOut != null || breakStart != null || breakEnd != null) {
-                            previewList.add(WorkDay(date, clockIn, breakStart, breakEnd, clockOut))
+                            // Criamos o WorkDay básico. Os intervalos serão processados no confirmImport se necessário.
+                            // Para simplificar a migração no CSV, podemos guardar temporariamente ou 
+                            // adaptar o modelo de importação.
+                            previewList.add(WorkDay(date, clockIn, clockOut))
+                            // Se houver breakStart/End no CSV, precisamos tratar isso como intervalo.
+                            // Mas WorkDay agora não tem esses campos. 
+                            // Vou adicionar suporte a uma lista temporária ou injetar diretamente no banco.
+                            if (breakStart != null) {
+                                launch(Dispatchers.IO) {
+                                    repository.insertInterval(WorkInterval(workDayId = date, startTime = breakStart, endTime = breakEnd, type = IntervalType.LUNCH))
+                                }
+                            }
                             validRecords++
-                            Log.d("WorkViewModel", "Linha $index validada: $date")
                         } else {
                             ignoredCount++
                             val msg = "Linha ${index + 1}: Data $date sem horários. Ignorada."
@@ -553,10 +583,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 val list = repository.getAllWorkDaysWithIntervalsSync().filter { it.workDay.date.month == selectedDate.month && it.workDay.date.year == selectedDate.year }.sortedBy { it.workDay.date }
                 val builder = StringBuilder("Data;Entrada;Início Pausa;Fim Pausa;Saída;Total Trabalhado\n")
                 val tf = DateTimeFormatter.ofPattern("HH:mm"); val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-                list.forEach {
-                    val worked = it.calculateTotalMinutes(isToday = it.workDay.date == LocalDate.now())
-                    val day = it.workDay
-                    builder.append("${day.date.format(df)};${day.clockIn?.format(tf) ?: ""};${day.breakStart?.format(tf) ?: ""};${day.breakEnd?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};${String.format("%02dh %02dm", worked/60, worked%60)}\n")
+                list.forEach { item ->
+                    val worked = item.calculateTotalMinutes(isToday = item.workDay.date == LocalDate.now())
+                    val day = item.workDay
+                    // Exporta o primeiro intervalo como "Pausa Principal" para manter o formato do CSV
+                    val mainBreak = item.intervals.sortedBy { it.startTime }.firstOrNull()
+                    builder.append("${day.date.format(df)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};${String.format("%02dh %02dm", worked/60, worked%60)}\n")
                 }
                 getApplication<Application>().contentResolver.openOutputStream(uri)?.use { it.write(builder.toString().toByteArray()) }
             }
@@ -567,7 +599,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
     fun exportFullHistoryToDrive(uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
         _isProcessing.postValue(true)
         try {
-            val allData = repository.getAllWorkDaysSync()
+            val allData = repository.getAllWorkDaysWithIntervalsSync()
             val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
             val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
             val tf = DateTimeFormatter.ofPattern("HH:mm"); val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -576,10 +608,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             getApplication<Application>().contentResolver.openOutputStream(uri)?.use { outputStream ->
                 BufferedWriter(OutputStreamWriter(outputStream, Charsets.UTF_8)).use { writer ->
                     writer.write("Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;Horas Trabalhadas;Meta;Saldo;Tipo\n")
-                    allData.forEach { day ->
-                        val totalMinutes = day.calculateTotalMinutes(isToday = day.date == LocalDate.now())
+                    allData.forEach { item ->
+                        val day = item.workDay
+                        val totalMinutes = item.calculateTotalMinutes(isToday = day.date == LocalDate.now())
                         val effectiveGoal = if (day.date.dayOfWeek.value > 5 || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
-                        writer.write("${day.date.format(df)};${day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)};${day.clockIn?.format(tf) ?: ""};${day.breakStart?.format(tf) ?: ""};${day.breakEnd?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};$totalMinutes;$effectiveGoal;${totalMinutes-effectiveGoal};${if(day.isHolidayOrOffDay) "Feriado" else "Util"}\n")
+                        val mainBreak = item.intervals.sortedBy { it.startTime }.firstOrNull()
+                        writer.write("${day.date.format(df)};${day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};$totalMinutes;$effectiveGoal;${totalMinutes-effectiveGoal};${if(day.isHolidayOrOffDay) "Feriado" else "Util"}\n")
                     }
                 }
             }

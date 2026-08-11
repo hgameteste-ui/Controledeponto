@@ -564,30 +564,6 @@
                         app:layout_constraintTop_toBottomOf="@id/lblDailyOvertime"
                         tools:text="Total em Intervalo: 01h 00m" />
 
-                    <com.google.android.material.progressindicator.LinearProgressIndicator
-                        android:id="@+id/progressWork"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        app:trackCornerRadius="4dp"
-                        app:trackThickness="8dp"
-                        android:progress="0"
-                        android:max="480"
-                        app:layout_constraintTop_toBottomOf="@id/tvTotalBreakTime" />
-
-                    <!-- Linha do Tempo Resumida -->
-                    <TextView
-                        android:id="@+id/tvDayTimeline"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:textAlignment="center"
-                        android:textSize="14sp"
-                        android:textColor="?attr/colorPrimary"
-                        android:textStyle="bold"
-                        app:layout_constraintTop_toBottomOf="@id/progressWork"
-                        tools:text="08:00 - 12:00 intervalo 01h30 - 13:30 - 18:00" />
-
                 </androidx.constraintlayout.widget.ConstraintLayout>
             </com.google.android.material.card.MaterialCardView>
 
