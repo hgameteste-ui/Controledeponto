@@ -1,35 +1,26 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 2.2.0
+ * Versão: 2.3.0
  * Data: 12/02/2025
- * Hora: 17:30
- * Descrição: Atividade principal atualizada para suportar a recuperação de dados via CSV com relatório detalhado de erros.
- * Adicionado suporte para sinalização de falta (isAbsence) e contabilização no saldo de horas.
+ * Hora: 20:30
+ * Descrição: Atividade principal atualizada para exibir badges de Falta e Feriado.
  * 
  * Histórico de Modificações:
- * 25/05/2024 21:30 - Removida restrição que impedia excluir o único registro do dia (entrada) e implementado o reset completo do dia.
- * 12/02/2025 15:00 - Corrigida falha onde itens do menu (Auditoria, Extrato, Feriados) não executavam ação.
  * 12/02/2025 17:30 - Implementada a lógica de sinalização de falta e atualização da UI correspondente.
+ * 12/02/2025 20:30 - Adicionado suporte visual para exibir feriados com badge amarelo.
  */
 
 package com.example.controledeponto
 
-import android.app.AlarmManager
 import android.app.DatePickerDialog
-import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
-import android.view.MotionEvent
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -41,7 +32,6 @@ import com.example.controledeponto.databinding.DialogClockAdjustBinding
 import com.example.controledeponto.databinding.DialogIntervalEditBinding
 import com.google.android.material.snackbar.Snackbar
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -208,7 +198,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        // Listeners para Intervalos com Ajuste Manual (Horário Padrão = Agora)
         binding.btnStartInterval.setOnClickListener {
             showClockAdjustDialog(null) { time ->
                 if (time != null) viewModel.startInterval(customTime = time)
@@ -255,6 +244,14 @@ class MainActivity : AppCompatActivity() {
             binding.tvBreakEnd.text = workDay?.breakEnd?.format(timeFormatter) ?: "--:--"
             binding.tvClockOut.text = workDay?.clockOut?.format(timeFormatter) ?: "--:--"
             
+            // Badge de Feriado
+            if (workDay?.isHolidayOrOffDay == true) {
+                binding.tvHolidayBadge.visibility = View.VISIBLE
+                binding.tvHolidayBadge.text = workDay.holidayName ?: "FERIADO"
+            } else {
+                binding.tvHolidayBadge.visibility = View.GONE
+            }
+
             // UI para Falta
             if (workDay?.isAbsence == true) {
                 binding.tvAbsenceBadge.visibility = View.VISIBLE
@@ -269,7 +266,6 @@ class MainActivity : AppCompatActivity() {
             updateStats(workDay); updateButtonUI(workDay); setupManualEdits(workDay)
         }
 
-        // Observar status de intervalo ativo
         viewModel.activeInterval.observe(this) { active ->
             if (active != null) {
                 binding.tvIntervalStatus.text = "Status: Em Intervalo (${active.type})"
@@ -368,7 +364,7 @@ class MainActivity : AppCompatActivity() {
     private fun showClockAdjustDialog(initialTime: LocalTime?, onDelete: (() -> Unit)? = null, onConfirm: (LocalTime?) -> Unit) {
         val dialogBinding = DialogClockAdjustBinding.inflate(LayoutInflater.from(this))
         var adjustedTime: LocalTime? = initialTime ?: LocalTime.now().truncatedTo(ChronoUnit.MINUTES)
-        var isHourSelected = true // Foco inicial no campo de horas
+        var isHourSelected = true 
         val dialog = AlertDialog.Builder(this).setView(dialogBinding.root).create()
 
         if (onDelete != null && initialTime != null) {
@@ -503,12 +499,18 @@ class MainActivity : AppCompatActivity() {
         binding.progressWork.progress = totalWorked.toInt().coerceAtMost(targetMinutes.toInt())
 
         val nextEvent = workDay?.getNextPrediction(targetMinutes, currentIntervals)
-        binding.tvPrediction.text = if (workDay?.isAbsence == true) "Dia de Falta Sinalizada" 
-                                    else nextEvent?.let { "${it.first} Estimada: ${it.second.format(timeFormatter)}" } ?: "Jornada Concluída"
+        binding.tvPrediction.text = when {
+            workDay?.isAbsence == true -> "Dia de Falta Sinalizada"
+            workDay?.isHolidayOrOffDay == true && totalWorked == 0L -> "Feriado: Meta Zero"
+            else -> nextEvent?.let { "${it.first} Estimada: ${it.second.format(timeFormatter)}" } ?: "Jornada Concluída"
+        }
         
-        binding.tvRemaining.text = if (workDay?.isAbsence == true) "Meta do dia será descontada do saldo"
-                                   else if (totalWorked < effectiveGoal) "Faltam ${formatTime(effectiveGoal - totalWorked)}"
-                                   else "Meta atingida!"
+        binding.tvRemaining.text = when {
+            workDay?.isAbsence == true -> "Meta do dia será descontada do saldo"
+            workDay?.isHolidayOrOffDay == true && totalWorked == 0L -> "Aproveite o descanso!"
+            totalWorked < effectiveGoal -> "Faltam ${formatTime(effectiveGoal - totalWorked)}"
+            else -> "Meta atingida!"
+        }
     }
 
     private fun updateButtonUI(workDay: WorkDay?) {
@@ -522,11 +524,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnPunch.text = label
         binding.btnPunch.isEnabled = workDay?.clockOut == null && workDay?.isAbsence != true
         
-        // Ocultar controles de intervalo se o expediente estiver encerrado ou não iniciado ou dia de falta
         val hasStarted = workDay?.clockIn != null && workDay?.isAbsence != true
         binding.cardIntervalControls.visibility = if (hasStarted) View.VISIBLE else View.GONE
         
-        // Desabilitar botões de intervalo se a jornada já foi encerrada
         val isFinished = workDay?.clockOut != null || workDay?.isAbsence == true
         if (isFinished) {
             binding.btnStartInterval.isEnabled = false
@@ -534,7 +534,6 @@ class MainActivity : AppCompatActivity() {
             binding.tvIntervalStatus.text = if (workDay?.isAbsence == true) "Dia com Falta" else "Jornada Encerrada"
         }
 
-        // Regras para o botão de Falta
         binding.btnToggleAbsence.isEnabled = workDay?.clockIn == null
     }
 

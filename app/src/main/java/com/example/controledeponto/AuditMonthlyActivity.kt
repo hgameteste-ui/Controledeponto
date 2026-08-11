@@ -1,16 +1,14 @@
 /*
  * Nome: AuditMonthlyActivity.kt
- * Versão: 2.9.0
+ * Versão: 3.0.0
  * Data: 12/02/2025
- * Hora: 18:00
+ * Hora: 20:45
  * Descrição: Tela de auditoria detalhada que lista todos os registros do mês.
- * Atualizada para exibir sinalização de faltas.
+ * Atualizada para exibir sinalização de feriados e folgas de forma proeminente.
  * 
  * Histórico de Modificações:
- * 24/05/2024 23:30 - Alterada para usar WorkDayWithIntervals, garantindo contabilização correta de pausas nos totais.
- * 12/02/2025 15:10 - Adicionada chamada ao updateAuditUi() no onCreate para carregar dados iniciais.
- * 12/02/2025 16:30 - Refinada a formatação de duração para incluir tempo individual e total formatado.
  * 12/02/2025 18:00 - Adicionada exibição visual para dias com falta sinalizada.
+ * 12/02/2025 20:45 - Adicionada exibição visual para feriados e melhorada a legibilidade dos status.
  */
 
 package com.example.controledeponto
@@ -141,19 +139,37 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 val day = dayWithIntervals.workDay
                 val dayOfWeek = day.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
                 
-                val absenceSuffix = if (day.isAbsence) " - [FALTA]" else ""
-                itemBinding.tvDayDate.text = "${day.date.format(DateTimeFormatter.ofPattern("dd/MM"))} - $dayOfWeek$absenceSuffix"
-                itemBinding.tvDayDate.setTextColor(if (day.isAbsence) Color.parseColor("#EF5350") else Color.WHITE)
+                // Suffixos de Status
+                val statusSuffix = when {
+                    day.isAbsence -> " - [FALTA]"
+                    day.isHolidayOrOffDay -> " - [${day.holidayName ?: "FERIADO"}]"
+                    else -> ""
+                }
+                
+                itemBinding.tvDayDate.text = "${day.date.format(DateTimeFormatter.ofPattern("dd/MM"))} - $dayOfWeek$statusSuffix"
+                
+                // Cores da Data baseadas no Status
+                val dateColor = when {
+                    day.isAbsence -> Color.parseColor("#EF5350") // Vermelho
+                    day.isHolidayOrOffDay -> Color.parseColor("#FFCA28") // Amarelo/Amber
+                    else -> Color.WHITE
+                }
+                itemBinding.tvDayDate.setTextColor(dateColor)
 
                 val ent = day.clockIn?.format(timeFormatter) ?: "--:--"
                 val sai = day.clockOut?.format(timeFormatter) ?: "--:--"
-                itemBinding.tvTimes.text = if (day.isAbsence) "Dia com falta sinalizada" else "Entrada: $ent | Saída: $sai"
+                
+                itemBinding.tvTimes.text = when {
+                    day.isAbsence -> "Dia com falta sinalizada"
+                    day.isHolidayOrOffDay && day.clockIn == null -> "Feriado/Folga: Meta Zero"
+                    else -> "Entrada: $ent | Saída: $sai"
+                }
 
-                if (day.isAbsence) {
+                if (day.isAbsence || (day.isHolidayOrOffDay && day.clockIn == null)) {
                     itemBinding.tvIntervalsRegular.visibility = View.GONE
                     itemBinding.tvIntervalsPauses.visibility = View.GONE
                 } else {
-                    // Lógica para Intervalos Regulares (Legado + Novos do tipo LUNCH)
+                    // Lógica para Intervalos Regulares
                     val regularDetails = mutableListOf<String>()
                     var regularTotalMinutes = 0L
                     
@@ -181,7 +197,7 @@ class AuditMonthlyActivity : AppCompatActivity() {
                         itemBinding.tvIntervalsRegular.text = "Regulares: ${regularDetails.joinToString(" | ")} - Total: ${formatDuration(regularTotalMinutes)}"
                     }
 
-                    // Lógica para Pausas (Novos intervalos que NÃO são LUNCH)
+                    // Lógica para Pausas
                     val otherIntervals = dayWithIntervals.intervals.filter { it.type != IntervalType.LUNCH }
                     if (otherIntervals.isEmpty()) {
                         itemBinding.tvIntervalsPauses.visibility = View.GONE
@@ -206,8 +222,11 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
                 val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
 
-                itemBinding.tvDayGoal.text = if (day.isHolidayOrOffDay) "Meta: 00h 00m - ${day.holidayName ?: "Folga/Feriado"}" 
-                                             else String.format("Meta: %02dh %02dm", effectiveGoal / 60, effectiveGoal % 60)
+                itemBinding.tvDayGoal.text = when {
+                    day.isAbsence -> "Meta: ${formatDuration(dailyGoalMinutes)} (Falta)"
+                    day.isHolidayOrOffDay -> "Meta: 00h 00m - ${day.holidayName ?: "Feriado/Folga"}"
+                    else -> String.format("Meta: %02dh %02dm", effectiveGoal / 60, effectiveGoal % 60)
+                }
 
                 val worked = dayWithIntervals.calculateTotalMinutes(isToday = day.date == LocalDate.now())
                 val balance = worked - effectiveGoal
