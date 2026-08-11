@@ -1,14 +1,10 @@
 /*
  * Nome: AuditMonthlyActivity.kt
- * Versão: 3.0.0
+ * Versão: 3.3.0
  * Data: 12/02/2025
- * Hora: 20:45
+ * Hora: 22:30
  * Descrição: Tela de auditoria detalhada que lista todos os registros do mês.
- * Atualizada para exibir sinalização de feriados e folgas de forma proeminente.
- * 
- * Histórico de Modificações:
- * 12/02/2025 18:00 - Adicionada exibição visual para dias com falta sinalizada.
- * 12/02/2025 20:45 - Adicionada exibição visual para feriados e melhorada a legibilidade dos status.
+ * Atualizada para exibir a linha do tempo detalhada: 08:00 - 12:00 intervalo 01h30 - 13:30 - 18:00.
  */
 
 package com.example.controledeponto
@@ -107,9 +103,11 @@ class AuditMonthlyActivity : AppCompatActivity() {
             var accumulator = 0L
             items = newList.map { dayWithIntervals ->
                 val day = dayWithIntervals.workDay
+                val worked = dayWithIntervals.calculateTotalMinutes(isToday = day.date == LocalDate.now())
+                
                 val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
                 val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
-                val worked = dayWithIntervals.calculateTotalMinutes(isToday = day.date == LocalDate.now())
+                
                 accumulator += (worked - effectiveGoal)
                 AuditItem(dayWithIntervals, accumulator)
             }
@@ -133,13 +131,19 @@ class AuditMonthlyActivity : AppCompatActivity() {
             return if (h > 0) String.format("%02dh %02dm", h, m) else String.format("%02dm", m)
         }
 
+        private fun formatDurationTimeline(minutes: Long): String {
+            val h = minutes / 60
+            val m = minutes % 60
+            return if (h > 0) String.format("%02dh%02d", h, m) else String.format("%02dm", m)
+        }
+
         inner class ViewHolder(private val itemBinding: ItemAuditDayBinding) : RecyclerView.ViewHolder(itemBinding.root) {
             fun bind(item: AuditItem) {
                 val dayWithIntervals = item.dayWithIntervals
                 val day = dayWithIntervals.workDay
                 val dayOfWeek = day.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
+                val isToday = day.date == LocalDate.now()
                 
-                // Suffixos de Status
                 val statusSuffix = when {
                     day.isAbsence -> " - [FALTA]"
                     day.isHolidayOrOffDay -> " - [${day.holidayName ?: "FERIADO"}]"
@@ -147,78 +151,67 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 }
                 
                 itemBinding.tvDayDate.text = "${day.date.format(DateTimeFormatter.ofPattern("dd/MM"))} - $dayOfWeek$statusSuffix"
-                
-                // Cores da Data baseadas no Status
                 val dateColor = when {
-                    day.isAbsence -> Color.parseColor("#EF5350") // Vermelho
-                    day.isHolidayOrOffDay -> Color.parseColor("#FFCA28") // Amarelo/Amber
+                    day.isAbsence -> Color.parseColor("#EF5350")
+                    day.isHolidayOrOffDay -> Color.parseColor("#FFCA28")
                     else -> Color.WHITE
                 }
                 itemBinding.tvDayDate.setTextColor(dateColor)
 
-                val ent = day.clockIn?.format(timeFormatter) ?: "--:--"
-                val sai = day.clockOut?.format(timeFormatter) ?: "--:--"
+                val ent = day.clockIn
+                val sai = day.clockOut
                 
-                itemBinding.tvTimes.text = when {
-                    day.isAbsence -> "Dia com falta sinalizada"
-                    day.isHolidayOrOffDay && day.clockIn == null -> "Feriado/Folga: Meta Zero"
-                    else -> "Entrada: $ent | Saída: $sai"
-                }
-
-                if (day.isAbsence || (day.isHolidayOrOffDay && day.clockIn == null)) {
-                    itemBinding.tvIntervalsRegular.visibility = View.GONE
-                    itemBinding.tvIntervalsPauses.visibility = View.GONE
-                } else {
-                    // Lógica para Intervalos Regulares
-                    val regularDetails = mutableListOf<String>()
-                    var regularTotalMinutes = 0L
+                if (day.isAbsence) {
+                    itemBinding.tvTimes.text = "Dia com falta sinalizada"
+                } else if (day.isHolidayOrOffDay && ent == null) {
+                    itemBinding.tvTimes.text = "Feriado/Folga: Meta Zero"
+                } else if (ent != null) {
+                    val timeline = StringBuilder()
+                    val allBreaks = mutableListOf<Pair<LocalTime, LocalTime>>()
                     
                     if (day.breakStart != null) {
-                        val bStart = day.breakStart
-                        val bEnd = day.breakEnd ?: (if (day.date == LocalDate.now()) LocalTime.now() else bStart)
-                        val diff = ChronoUnit.MINUTES.between(bStart, bEnd).coerceAtLeast(0)
-                        regularTotalMinutes += diff
-                        regularDetails.add("${bStart.format(timeFormatter)} - ${bEnd.format(timeFormatter)} (${formatDuration(diff)})")
+                        allBreaks.add(day.breakStart to (day.breakEnd ?: if (isToday) LocalTime.now() else day.breakStart))
+                    }
+                    dayWithIntervals.intervals.forEach { 
+                        allBreaks.add(it.startTime to (it.endTime ?: if (isToday) LocalTime.now() else it.startTime))
                     }
                     
-                    val lunchIntervals = dayWithIntervals.intervals.filter { it.type == IntervalType.LUNCH }
-                    lunchIntervals.forEach { interval ->
-                        val iStart = interval.startTime
-                        val iEnd = interval.endTime ?: (if (day.date == LocalDate.now()) LocalTime.now() else iStart)
-                        val diff = ChronoUnit.MINUTES.between(iStart, iEnd).coerceAtLeast(0)
-                        regularTotalMinutes += diff
-                        regularDetails.add("${iStart.format(timeFormatter)} - ${iEnd.format(timeFormatter)} (${formatDuration(diff)})")
-                    }
-
-                    if (regularDetails.isEmpty()) {
-                        itemBinding.tvIntervalsRegular.visibility = View.GONE
-                    } else {
-                        itemBinding.tvIntervalsRegular.visibility = View.VISIBLE
-                        itemBinding.tvIntervalsRegular.text = "Regulares: ${regularDetails.joinToString(" | ")} - Total: ${formatDuration(regularTotalMinutes)}"
-                    }
-
-                    // Lógica para Pausas
-                    val otherIntervals = dayWithIntervals.intervals.filter { it.type != IntervalType.LUNCH }
-                    if (otherIntervals.isEmpty()) {
-                        itemBinding.tvIntervalsPauses.visibility = View.GONE
-                    } else {
-                        itemBinding.tvIntervalsPauses.visibility = View.VISIBLE
-                        var pauseTotalMinutes = 0L
-                        val pausesDetails = otherIntervals.map { interval ->
-                            val iStart = interval.startTime
-                            val iEnd = interval.endTime ?: (if (day.date == LocalDate.now()) LocalTime.now() else iStart)
-                            val diff = ChronoUnit.MINUTES.between(iStart, iEnd).coerceAtLeast(0)
-                            pauseTotalMinutes += diff
-                            "${iStart.format(timeFormatter)}-${iEnd.format(timeFormatter)} (${formatDuration(diff)})"
+                    val validBreaks = allBreaks.filter { !it.first.isBefore(ent) }.sortedBy { it.first }
+                    
+                    timeline.append(ent.format(timeFormatter))
+                    var lastPointer = ent
+                    validBreaks.forEach { brk ->
+                        if (!brk.first.isBefore(lastPointer)) {
+                            timeline.append(" - ").append(brk.first.format(timeFormatter))
+                            val dur = ChronoUnit.MINUTES.between(brk.first, brk.second).coerceAtLeast(0)
+                            timeline.append(" intervalo ").append(formatDurationTimeline(dur))
+                            timeline.append(" - ").append(brk.second.format(timeFormatter))
+                            lastPointer = brk.second
                         }
-                        itemBinding.tvIntervalsPauses.text = "Pausas: ${pausesDetails.joinToString(", ")} - Total: ${formatDuration(pauseTotalMinutes)}"
                     }
+                    
+                    val inActiveBreak = dayWithIntervals.intervals.any { it.endTime == null } || (day.breakStart != null && day.breakEnd == null)
+                    val finalEnd = sai ?: if (isToday && !inActiveBreak) LocalTime.now().truncatedTo(ChronoUnit.MINUTES) else null
+                    
+                    if (finalEnd != null && !finalEnd.isBefore(lastPointer)) {
+                        timeline.append(" - ").append(finalEnd.format(timeFormatter))
+                    } else if (inActiveBreak) {
+                        timeline.append(" - [EM PAUSA]")
+                    } else if (sai == null && !isToday) {
+                        timeline.append(" - [EM ABERTO]")
+                    }
+                    
+                    itemBinding.tvTimes.text = timeline.toString()
+                } else {
+                    itemBinding.tvTimes.text = "Sem registros de horários"
                 }
 
-                val prefs = PreferenceManager.getDefaultSharedPreferences(itemView.context)
-                val workHours = prefs.getString("work_hours", "8")?.toLong() ?: 8L
-                val dailyGoalMinutes = workHours * 60
+                itemBinding.tvIntervalsRegular.visibility = View.GONE
+                itemBinding.tvIntervalsPauses.visibility = View.GONE
 
+                val worked = dayWithIntervals.calculateTotalMinutes(isToday = isToday)
+                val prefs = PreferenceManager.getDefaultSharedPreferences(itemView.context)
+                val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
                 val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
                 val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
 
@@ -228,7 +221,6 @@ class AuditMonthlyActivity : AppCompatActivity() {
                     else -> String.format("Meta: %02dh %02dm", effectiveGoal / 60, effectiveGoal % 60)
                 }
 
-                val worked = dayWithIntervals.calculateTotalMinutes(isToday = day.date == LocalDate.now())
                 val balance = worked - effectiveGoal
                 val absBalance = Math.abs(balance)
                 val sign = if (balance >= 0) "+" else "-"

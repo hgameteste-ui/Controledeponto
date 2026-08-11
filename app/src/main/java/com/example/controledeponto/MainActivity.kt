@@ -1,13 +1,13 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 2.3.0
- * Data: 12/02/2025
- * Hora: 20:30
- * Descrição: Atividade principal atualizada para exibir badges de Falta e Feriado.
+ * Versão: 2.9.0
+ * Data: 13/02/2025
+ * Hora: 10:15
+ * Descrição: Atividade principal atualizada com linha do tempo detalhada e duração de intervalos entre os turnos.
  * 
  * Histórico de Modificações:
- * 12/02/2025 17:30 - Implementada a lógica de sinalização de falta e atualização da UI correspondente.
- * 12/02/2025 20:30 - Adicionado suporte visual para exibir feriados com badge amarelo.
+ * 12/02/2025 22:00 - Refinada a linha do tempo para intercalar períodos de trabalho e duração de intervalos.
+ * 13/02/2025 10:15 - Ajustada a formatação da timeline e duração de intervalos legados.
  */
 
 package com.example.controledeponto
@@ -244,7 +244,6 @@ class MainActivity : AppCompatActivity() {
             binding.tvBreakEnd.text = workDay?.breakEnd?.format(timeFormatter) ?: "--:--"
             binding.tvClockOut.text = workDay?.clockOut?.format(timeFormatter) ?: "--:--"
             
-            // Badge de Feriado
             if (workDay?.isHolidayOrOffDay == true) {
                 binding.tvHolidayBadge.visibility = View.VISIBLE
                 binding.tvHolidayBadge.text = workDay.holidayName ?: "FERIADO"
@@ -252,7 +251,6 @@ class MainActivity : AppCompatActivity() {
                 binding.tvHolidayBadge.visibility = View.GONE
             }
 
-            // UI para Falta
             if (workDay?.isAbsence == true) {
                 binding.tvAbsenceBadge.visibility = View.VISIBLE
                 binding.btnToggleAbsence.text = "Remover Sinalização de Falta"
@@ -490,6 +488,66 @@ class MainActivity : AppCompatActivity() {
         val totalWorked = workDay?.calculateTotalMinutes(currentIntervals, isToday) ?: 0L
         binding.tvTotalWorked.text = formatTime(totalWorked)
         
+        val legacyBreak = workDay?.calculateBreakMinutes(isToday) ?: 0L
+        val newBreaks = currentIntervals.sumOf { 
+            val end = it.endTime ?: if (isToday) LocalTime.now() else it.startTime
+            ChronoUnit.MINUTES.between(it.startTime, end)
+        }
+        val totalInterval = legacyBreak + newBreaks
+        binding.tvTotalBreakTime.text = "Total em Intervalo: ${formatTime(totalInterval)}"
+        
+        // Atualiza a duração do intervalo legado na UI principal (entre os turnos)
+        if (workDay?.breakStart != null) {
+            val end = workDay.breakEnd ?: if (isToday) LocalTime.now() else workDay.breakStart
+            val dur = ChronoUnit.MINUTES.between(workDay.breakStart, end).coerceAtLeast(0)
+            binding.tvLegacyIntervalDuration.text = "intervalo ${formatDurationTimeline(dur)}"
+            binding.tvLegacyIntervalDuration.visibility = View.VISIBLE
+        } else {
+            binding.tvLegacyIntervalDuration.visibility = View.GONE
+        }
+
+        // CONSTRUÇÃO DA LINHA DO TEMPO DETALHADA
+        val ent = workDay?.clockIn
+        if (ent != null && workDay.isAbsence != true) {
+            val timeline = StringBuilder()
+            val allBreaks = mutableListOf<Pair<LocalTime, LocalTime>>()
+            if (workDay.breakStart != null) {
+                allBreaks.add(workDay.breakStart to (workDay.breakEnd ?: if (isToday) LocalTime.now() else workDay.breakStart))
+            }
+            currentIntervals.forEach { 
+                allBreaks.add(it.startTime to (it.endTime ?: if (isToday) LocalTime.now() else it.startTime))
+            }
+            val validBreaks = allBreaks.filter { !it.first.isBefore(ent) }.sortedBy { it.first }
+            
+            timeline.append(ent.format(timeFormatter))
+            var lastPointer = ent
+            validBreaks.forEach { brk ->
+                if (!brk.first.isBefore(lastPointer)) {
+                    timeline.append(" - ").append(brk.first.format(timeFormatter))
+                    val dur = ChronoUnit.MINUTES.between(brk.first, brk.second).coerceAtLeast(0)
+                    timeline.append(" intervalo ").append(formatDurationTimeline(dur))
+                    timeline.append(" - ").append(brk.second.format(timeFormatter))
+                    lastPointer = brk.second
+                }
+            }
+
+            val inActiveBreak = currentIntervals.any { it.endTime == null } || (workDay.breakStart != null && workDay.breakEnd == null)
+            val finalEnd = workDay.clockOut ?: if (isToday && !inActiveBreak) LocalTime.now().truncatedTo(ChronoUnit.MINUTES) else null
+            
+            if (finalEnd != null && !finalEnd.isBefore(lastPointer)) {
+                timeline.append(" - ").append(finalEnd.format(timeFormatter))
+            } else if (inActiveBreak) {
+                timeline.append(" - [EM PAUSA]")
+            } else if (workDay.clockOut == null && !isToday) {
+                timeline.append(" - [EM ABERTO]")
+            }
+
+            binding.tvDayTimeline.text = timeline.toString()
+            binding.tvDayTimeline.visibility = View.VISIBLE
+        } else {
+            binding.tvDayTimeline.visibility = View.GONE
+        }
+
         val effectiveGoal = if (selectedDate.dayOfWeek.value > 5 || workDay?.isHolidayOrOffDay == true) 0L else targetMinutes
         val balance = totalWorked - effectiveGoal
         binding.tvDailyOvertime.text = (if (balance >= 0) "+" else "-") + formatTime(balance)
@@ -513,6 +571,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun formatDurationTimeline(minutes: Long): String {
+        val h = minutes / 60
+        val m = minutes % 60
+        return if (h > 0) String.format(Locale("pt", "BR"), "%02dh%02d", h, m) else String.format(Locale("pt", "BR"), "%02dm", m)
+    }
+
     private fun updateButtonUI(workDay: WorkDay?) {
         val label = when {
             workDay == null || workDay.clockIn == null -> "ENTRADA"
@@ -534,7 +598,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvIntervalStatus.text = if (workDay?.isAbsence == true) "Dia com Falta" else "Jornada Encerrada"
         }
 
-        binding.btnToggleAbsence.isEnabled = workDay?.clockIn == null
+        binding.btnToggleAbsence.isEnabled = (workDay == null || workDay.clockIn == null)
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
@@ -661,7 +725,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatTime(minutes: Long): String {
         val m = Math.abs(minutes)
-        return String.format("%02dh %02dm", m / 60, m % 60)
+        return String.format(Locale("pt", "BR"), "%02dh %02dm", m / 60, m % 60)
     }
     
     private fun formatHours(minutes: Long): String = "${minutes / 60}h"

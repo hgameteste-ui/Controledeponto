@@ -433,16 +433,31 @@
                         app:layout_constraintStart_toEndOf="@id/barrierLabels"
                         android:layout_marginStart="16dp"/>
 
+                    <!-- Duração entre os pontos -->
+                    <TextView
+                        android:id="@+id/tvLegacyIntervalDuration"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="intervalo 00h 00m"
+                        android:textSize="13sp"
+                        android:textStyle="italic"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:visibility="gone"
+                        android:layout_marginTop="4dp"
+                        app:layout_constraintTop_toBottomOf="@id/tvBreakStart"
+                        app:layout_constraintStart_toStartOf="@id/tvBreakStart"
+                        tools:visibility="visible" />
+
                     <!-- Fim Intervalo -->
                     <TextView
                         android:id="@+id/lblBreakEnd"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="4dp"
                         android:text="Fim Intervalo:"
                         android:textSize="17sp"
                         app:layout_constraintStart_toStartOf="parent"
-                        app:layout_constraintTop_toBottomOf="@id/lblBreakStart" />
+                        app:layout_constraintTop_toBottomOf="@id/tvLegacyIntervalDuration" />
 
                     <TextView
                         android:id="@+id/tvBreakEnd"
@@ -538,6 +553,17 @@
                         android:layout_marginStart="16dp"
                         tools:text="+01h 20m" />
 
+                    <TextView
+                        android:id="@+id/tvTotalBreakTime"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textSize="14sp"
+                        android:textColor="?android:attr/textColorSecondary"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toBottomOf="@id/lblDailyOvertime"
+                        tools:text="Total em Intervalo: 01h 00m" />
+
                     <com.google.android.material.progressindicator.LinearProgressIndicator
                         android:id="@+id/progressWork"
                         android:layout_width="match_parent"
@@ -547,7 +573,20 @@
                         app:trackThickness="8dp"
                         android:progress="0"
                         android:max="480"
-                        app:layout_constraintTop_toBottomOf="@id/lblDailyOvertime" />
+                        app:layout_constraintTop_toBottomOf="@id/tvTotalBreakTime" />
+
+                    <!-- Linha do Tempo Resumida -->
+                    <TextView
+                        android:id="@+id/tvDayTimeline"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:textAlignment="center"
+                        android:textSize="14sp"
+                        android:textColor="?attr/colorPrimary"
+                        android:textStyle="bold"
+                        app:layout_constraintTop_toBottomOf="@id/progressWork"
+                        tools:text="08:00 - 12:00 intervalo 01h30 - 13:30 - 18:00" />
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
             </com.google.android.material.card.MaterialCardView>

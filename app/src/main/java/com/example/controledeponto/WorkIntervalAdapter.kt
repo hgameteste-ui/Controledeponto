@@ -1,13 +1,9 @@
 /*
  * Nome: WorkIntervalAdapter.kt
- * Versão: 1.1.0
- * Data: 24/05/2024
- * Hora: 20:00
- * Descrição: Adapter para o RecyclerView que exibe a lista de intervalos (pausas) de um dia.
- * 
- * Histórico de Modificações:
- * 24/05/2024 15:00 - Criação inicial com suporte a múltiplos intervalos.
- * 24/05/2024 20:00 - Adicionado listener de clique para permitir a exclusão de intervalos.
+ * Versão: 1.4.0
+ * Data: 13/02/2025
+ * Hora: 10:30
+ * Descrição: Adapter atualizado para exibir a duração entre os horários no formato: "12:00 - intervalo 01h30 - 13:30".
  */
 
 package com.example.controledeponto
@@ -40,8 +36,6 @@ class WorkIntervalAdapter(
 
     inner class IntervalViewHolder(private val binding: ItemIntervalBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: WorkInterval) {
-            val context = binding.root.context
-            
             binding.root.setOnClickListener { onIntervalClick(item) }
 
             binding.tvIntervalType.text = when (item.type) {
@@ -52,17 +46,21 @@ class WorkIntervalAdapter(
 
             val startStr = item.startTime.format(timeFormatter)
             val endStr = item.endTime?.format(timeFormatter) ?: "--:--"
-            binding.tvIntervalTimes.text = context.getString(R.string.interval_times_format, startStr, endStr)
-
+            
             val end = item.endTime ?: LocalTime.now()
-            val durationMinutes = ChronoUnit.MINUTES.between(item.startTime, end)
-            binding.tvIntervalDuration.text = formatDuration(durationMinutes)
+            val durationMinutes = ChronoUnit.MINUTES.between(item.startTime, end).coerceAtLeast(0)
+            
+            // Formato: 12:00 - intervalo 01h30 - 13:30
+            binding.tvIntervalTimes.text = String.format(Locale("pt", "BR"), "%s - intervalo %s - %s", 
+                startStr, formatDurationTimeline(durationMinutes), endStr)
+
+            binding.tvIntervalDuration.visibility = android.view.View.GONE
         }
 
-        private fun formatDuration(minutes: Long): String {
+        private fun formatDurationTimeline(minutes: Long): String {
             val h = minutes / 60
             val m = minutes % 60
-            return String.format(Locale.getDefault(), "%02dh %02dm", h, m)
+            return if (h > 0) String.format(Locale("pt", "BR"), "%02dh%02d", h, m) else String.format(Locale("pt", "BR"), "%02dm", m)
         }
     }
 
