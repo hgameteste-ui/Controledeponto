@@ -1,16 +1,15 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 2.1.0
+ * Versão: 2.2.0
  * Data: 12/02/2025
- * Hora: 15:00
+ * Hora: 17:30
  * Descrição: Atividade principal atualizada para suportar a recuperação de dados via CSV com relatório detalhado de erros.
- * Adicionado suporte para todos os itens do menu principal.
+ * Adicionado suporte para sinalização de falta (isAbsence) e contabilização no saldo de horas.
  * 
  * Histórico de Modificações:
  * 25/05/2024 21:30 - Removida restrição que impedia excluir o único registro do dia (entrada) e implementado o reset completo do dia.
- * 12/02/2025 10:15 - Adicionado suporte para importação de backup CSV, incluindo diálogo de confirmação com resumo dos dados.
- * 12/02/2025 11:15 - Adicionada observação do relatório de erros de importação para exibir ao usuário.
  * 12/02/2025 15:00 - Corrigida falha onde itens do menu (Auditoria, Extrato, Feriados) não executavam ação.
+ * 12/02/2025 17:30 - Implementada a lógica de sinalização de falta e atualização da UI correspondente.
  */
 
 package com.example.controledeponto
@@ -236,6 +235,10 @@ class MainActivity : AppCompatActivity() {
             val isVisible = binding.layoutDetails.visibility == View.VISIBLE
             binding.layoutDetails.visibility = if (isVisible) View.GONE else View.VISIBLE
         }
+
+        binding.btnToggleAbsence.setOnClickListener {
+            viewModel.toggleAbsence()
+        }
     }
 
     private fun setupObservers() {
@@ -251,6 +254,18 @@ class MainActivity : AppCompatActivity() {
             binding.tvBreakStart.text = workDay?.breakStart?.format(timeFormatter) ?: "--:--"
             binding.tvBreakEnd.text = workDay?.breakEnd?.format(timeFormatter) ?: "--:--"
             binding.tvClockOut.text = workDay?.clockOut?.format(timeFormatter) ?: "--:--"
+            
+            // UI para Falta
+            if (workDay?.isAbsence == true) {
+                binding.tvAbsenceBadge.visibility = View.VISIBLE
+                binding.btnToggleAbsence.text = "Remover Sinalização de Falta"
+                binding.btnPunch.isEnabled = false
+            } else {
+                binding.tvAbsenceBadge.visibility = View.GONE
+                binding.btnToggleAbsence.text = "Sinalizar Falta do Dia"
+                binding.btnPunch.isEnabled = workDay?.clockOut == null
+            }
+
             updateStats(workDay); updateButtonUI(workDay); setupManualEdits(workDay)
         }
 
@@ -264,7 +279,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 binding.tvIntervalStatus.text = "Status: Trabalhando"
                 binding.tvIntervalStatus.setTextColor(resources.getColor(R.color.purple_500, theme))
-                binding.btnStartInterval.isEnabled = true
+                binding.btnStartInterval.isEnabled = viewModel.selectedWorkDay.value?.isAbsence != true
                 binding.btnEndInterval.isEnabled = false
             }
             updateStats(viewModel.selectedWorkDay.value)
@@ -480,13 +495,20 @@ class MainActivity : AppCompatActivity() {
         binding.tvTotalWorked.text = formatTime(totalWorked)
         
         val effectiveGoal = if (selectedDate.dayOfWeek.value > 5 || workDay?.isHolidayOrOffDay == true) 0L else targetMinutes
-        binding.tvDailyOvertime.text = (if (totalWorked >= effectiveGoal) "+" else "-") + formatTime(totalWorked - effectiveGoal)
+        val balance = totalWorked - effectiveGoal
+        binding.tvDailyOvertime.text = (if (balance >= 0) "+" else "-") + formatTime(balance)
+        binding.tvDailyOvertime.setTextColor(resources.getColor(if (balance >= 0) android.R.color.holo_green_dark else android.R.color.holo_red_dark, theme))
         
         binding.progressWork.max = targetMinutes.toInt()
         binding.progressWork.progress = totalWorked.toInt().coerceAtMost(targetMinutes.toInt())
 
         val nextEvent = workDay?.getNextPrediction(targetMinutes, currentIntervals)
-        binding.tvPrediction.text = nextEvent?.let { "${it.first} Estimada: ${it.second.format(timeFormatter)}" } ?: "Jornada Concluída"
+        binding.tvPrediction.text = if (workDay?.isAbsence == true) "Dia de Falta Sinalizada" 
+                                    else nextEvent?.let { "${it.first} Estimada: ${it.second.format(timeFormatter)}" } ?: "Jornada Concluída"
+        
+        binding.tvRemaining.text = if (workDay?.isAbsence == true) "Meta do dia será descontada do saldo"
+                                   else if (totalWorked < effectiveGoal) "Faltam ${formatTime(effectiveGoal - totalWorked)}"
+                                   else "Meta atingida!"
     }
 
     private fun updateButtonUI(workDay: WorkDay?) {
@@ -498,25 +520,33 @@ class MainActivity : AppCompatActivity() {
             else -> "CONCLUÍDO"
         }
         binding.btnPunch.text = label
-        binding.btnPunch.isEnabled = workDay?.clockOut == null
+        binding.btnPunch.isEnabled = workDay?.clockOut == null && workDay?.isAbsence != true
         
-        // Ocultar controles de intervalo se o expediente estiver encerrado ou não iniciado
-        val hasStarted = workDay?.clockIn != null
+        // Ocultar controles de intervalo se o expediente estiver encerrado ou não iniciado ou dia de falta
+        val hasStarted = workDay?.clockIn != null && workDay?.isAbsence != true
         binding.cardIntervalControls.visibility = if (hasStarted) View.VISIBLE else View.GONE
         
         // Desabilitar botões de intervalo se a jornada já foi encerrada
-        val isFinished = workDay?.clockOut != null
+        val isFinished = workDay?.clockOut != null || workDay?.isAbsence == true
         if (isFinished) {
             binding.btnStartInterval.isEnabled = false
             binding.btnEndInterval.isEnabled = false
-            binding.tvIntervalStatus.text = "Jornada Encerrada"
+            binding.tvIntervalStatus.text = if (workDay?.isAbsence == true) "Dia com Falta" else "Jornada Encerrada"
         }
+
+        // Regras para o botão de Falta
+        binding.btnToggleAbsence.isEnabled = workDay?.clockIn == null
     }
 
     private fun setupManualEdits(workDay: WorkDay?) {
         val date = viewModel.selectedDate.value ?: LocalDate.now()
         val current = workDay ?: WorkDay(date)
         val listener = View.OnClickListener { view ->
+            if (current.isAbsence) {
+                Snackbar.make(binding.root, "Remova a sinalização de falta para editar horários.", Snackbar.LENGTH_LONG).show()
+                return@OnClickListener
+            }
+
             val time = when(view.id) {
                 R.id.tvClockIn, R.id.lblClockIn -> current.clockIn
                 R.id.tvBreakStart, R.id.lblBreakStart -> current.breakStart

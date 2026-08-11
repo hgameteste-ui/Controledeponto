@@ -1,16 +1,15 @@
 /*
  * Nome: WorkViewModel.kt
- * Versão: 2.6.0
+ * Versão: 2.7.0
  * Data: 12/02/2025
- * Hora: 14:00
- * Descrição: ViewModel responsável pela lógica de negócio, com importação de CSV corrigida para evitar erro de limite negativo no split.
+ * Hora: 17:15
+ * Descrição: ViewModel responsável pela lógica de negócio.
+ * Atualizada para suportar a sinalização de faltas (isAbsence).
  * 
  * Histórico de Modificações:
  * 25/05/2024 21:00 - Adicionado método deleteWorkDay para permitir resetar o estado do dia completamente.
- * 12/02/2025 11:00 - Corrigida falha na importação de linhas com campos vazios, adicionado suporte a BOM e relatório detalhado.
- * 12/02/2025 13:00 - Refinada lógica de detecção de colunas e relatório estatístico.
- * 12/02/2025 13:30 - Removida restrição rígida de 5 colunas.
- * 12/02/2025 14:00 - Corrigido erro "Limit must be non-negative" ao remover o parâmetro limit = -1 do split, incompatível com Kotlin.
+ * 12/02/2025 14:00 - Corrigido erro "Limit must be non-negative" ao remover o parâmetro limit = -1 do split.
+ * 12/02/2025 17:15 - Adicionado método toggleAbsence para alternar o status de falta do dia.
  */
 
 package com.example.controledeponto
@@ -21,7 +20,6 @@ import android.util.Log
 import androidx.lifecycle.*
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -53,17 +51,14 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         repository.getWorkDay(date)
     }
 
-    // Intervalos do dia selecionado
     val intervals: LiveData<List<WorkInterval>> = _selectedDate.switchMap { date ->
         repository.getIntervalsByDate(date).asLiveData()
     }
 
-    // Intervalo ativo (aquele que não tem endTime)
     val activeInterval: LiveData<WorkInterval?> = intervals.map { list ->
         list.find { it.endTime == null }
     }
 
-    // Tempo total de pausa no dia selecionado (em minutos)
     val totalBreakMinutes: LiveData<Long> = intervals.map { list ->
         list.sumOf { interval ->
             val end = interval.endTime ?: LocalTime.now()
@@ -205,12 +200,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
         return list.filter {
             it.workDay.date.month == targetDate.month && it.workDay.date.year == targetDate.year &&
-                    (!onlySurplus || it.workDay.clockIn != null) && !it.workDay.date.isAfter(now)
+                    (!onlySurplus || it.workDay.clockIn != null || it.workDay.isAbsence) && !it.workDay.date.isAfter(now)
         }.sumOf { dayWithIntervals ->
             val worked = dayWithIntervals.calculateTotalMinutes(isToday = dayWithIntervals.workDay.date == now)
             val day = dayWithIntervals.workDay
             val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null)) 0L else dailyGoalMinutes
+            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
             val diff = worked - effectiveGoal
             if (onlySurplus) diff.coerceAtLeast(0L) else diff
         }
@@ -232,7 +227,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             val worked = dayWithIntervals.calculateTotalMinutes(isToday = dayWithIntervals.workDay.date == now)
             val day = dayWithIntervals.workDay
             val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null)) 0L else dailyGoalMinutes
+            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
             worked - effectiveGoal
         }
     }
@@ -253,7 +248,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 val worked = dayWithIntervals.calculateTotalMinutes(isToday = dayWithIntervals.workDay.date == now)
                 val day = dayWithIntervals.workDay
                 val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-                val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null)) 0L else dailyGoalMinutes
+                val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
                 worked - effectiveGoal
             }
             val monthName = month.getDisplayName(TextStyle.FULL, Locale.getDefault())
@@ -269,10 +264,30 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         _selectedDate.value = LocalDate.of(year, month, 1)
     }
 
+    fun toggleAbsence() = viewModelScope.launch {
+        val date = _selectedDate.value ?: LocalDate.now()
+        val current = repository.getWorkDaySync(date) ?: WorkDay(date)
+        
+        // Só permite sinalizar falta se não houver registros de ponto
+        if (current.clockIn != null || current.clockOut != null) {
+            _importStatus.postValue("Não é possível marcar falta em um dia com registros de ponto.")
+            return@launch
+        }
+        
+        val updated = current.copy(isAbsence = !current.isAbsence)
+        repository.insert(updated)
+    }
+
     fun punchClock(customTime: LocalTime? = null) = viewModelScope.launch {
         val date = _selectedDate.value ?: LocalDate.now()
         val timeToRegister = (customTime ?: LocalTime.now()).truncatedTo(ChronoUnit.MINUTES)
         val current = repository.getWorkDaySync(date) ?: WorkDay(date)
+        
+        if (current.isAbsence) {
+            _importStatus.postValue("Remova a sinalização de falta antes de registrar ponto.")
+            return@launch
+        }
+
         val updated = when {
             current.clockIn == null -> current.copy(clockIn = timeToRegister)
             current.breakStart == null -> current.copy(breakStart = timeToRegister)
@@ -283,22 +298,22 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         repository.insert(updated)
     }
 
-    /**
-     * Inicia um novo intervalo para o dia selecionado com horário customizado.
-     * @param type String representando o tipo (BREAK, LUNCH, OTHER).
-     * @param customTime Horário definido manualmente pelo usuário.
-     */
     fun startInterval(type: String = "BREAK", customTime: LocalTime? = null) = viewModelScope.launch {
         val date = _selectedDate.value ?: LocalDate.now()
         val timeToRegister = (customTime ?: LocalTime.now()).truncatedTo(ChronoUnit.MINUTES)
         
+        val current = repository.getWorkDaySync(date)
+        if (current?.isAbsence == true) {
+            _importStatus.postValue("Remova a sinalização de falta antes de iniciar intervalo.")
+            return@launch
+        }
+
         val intervalType = try {
             IntervalType.valueOf(type.uppercase(Locale.getDefault()))
         } catch (e: Exception) {
             IntervalType.BREAK
         }
 
-        // Garante que existe um WorkDay
         if (repository.getWorkDaySync(date) == null) {
             repository.insert(WorkDay(date = date))
         }
@@ -310,48 +325,34 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         ))
     }
 
-    /**
-     * Finaliza o intervalo ativo (aquele que não possui endTime) com horário customizado.
-     * @param customTime Horário definido manualmente pelo usuário.
-     */
     fun endInterval(customTime: LocalTime? = null) = viewModelScope.launch {
         val active = activeInterval.value ?: return@launch
         val timeToRegister = (customTime ?: LocalTime.now()).truncatedTo(ChronoUnit.MINUTES)
         repository.updateInterval(active.copy(endTime = timeToRegister))
     }
 
-    /**
-     * Atualiza um intervalo existente.
-     */
     fun updateInterval(interval: WorkInterval) = viewModelScope.launch {
         repository.updateInterval(interval)
     }
 
-    /**
-     * Exclui um intervalo do banco de dados.
-     */
     fun deleteInterval(interval: WorkInterval) = viewModelScope.launch {
         repository.deleteInterval(interval)
     }
 
-    /**
-     * Exclui o registro do dia completo.
-     */
     fun deleteWorkDay(workDay: WorkDay) = viewModelScope.launch {
         repository.deleteWorkDay(workDay)
     }
 
-    /**
-     * Retorna a LiveData com a lista de intervalos do dia selecionado.
-     */
     fun getIntervalsForDay(): LiveData<List<WorkInterval>> = intervals
-
-    /**
-     * Retorna a LiveData com o tempo total de pausa em minutos do dia selecionado.
-     */
     fun getTotalBreakTime(): LiveData<Long> = totalBreakMinutes
 
-    fun updateWorkDay(workDay: WorkDay) = viewModelScope.launch { repository.insert(workDay) }
+    fun updateWorkDay(workDay: WorkDay) = viewModelScope.launch { 
+        if (workDay.isAbsence && (workDay.clockIn != null || workDay.clockOut != null)) {
+             _importStatus.postValue("Não é possível ter registros de ponto em um dia de falta.")
+             return@launch
+        }
+        repository.insert(workDay) 
+    }
 
     fun fetchAndSyncHolidays(year: Int) = viewModelScope.launch(Dispatchers.IO) {
         _importStatus.postValue("Sincronizando feriados de $year...")
@@ -440,7 +441,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                         return@forEachIndexed
                     }
                     
-                    // Corrigido: Removido limit = -1 que causava IllegalArgumentException em Kotlin
                     val parts = line.split(";").map { it.trim().removeSurrounding("\"") }
                     Log.d("WorkViewModel", "Lendo Linha $index (Colunas: ${parts.size}): $parts")
 
@@ -459,7 +459,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                         val breakEnd = if (parts.size > 3) flexibleParseTime(parts[3]) else null
                         val clockOut = if (parts.size > 4) flexibleParseTime(parts[4]) else null
                         
-                        // Registro válido se tiver data + pelo menos um horário ou se for um dia útil (meta 0)
                         if (clockIn != null || clockOut != null || breakStart != null || breakEnd != null) {
                             previewList.add(WorkDay(date, clockIn, breakStart, breakEnd, clockOut))
                             validRecords++

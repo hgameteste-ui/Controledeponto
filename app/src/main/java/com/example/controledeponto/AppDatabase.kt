@@ -1,10 +1,9 @@
 /**
  * Nome: AppDatabase.kt
- * Data: 24/05/2024
- * Hora: 10:20
+ * Data: 12/02/2025
+ * Hora: 18:15
  * Descrição: Classe abstrata que define o banco de dados Room e suas migrações.
- * Histórico: 
- * - 24/05/2024: Atualização para versão 4, adição da tabela 'intervals' e migration MIGRATION_3_4.
+ * Atualizada para versão 5 com suporte a migração e fallback.
  */
 
 package com.example.controledeponto
@@ -17,7 +16,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [WorkDay::class, WorkInterval::class], version = 4, exportSchema = false)
+@Database(entities = [WorkDay::class, WorkInterval::class], version = 5, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun workDayDao(): WorkDayDao
@@ -43,6 +42,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Adiciona a coluna isAbsence como INTEGER (Boolean no Room) com valor padrão 0 (false)
+                db.execSQL("ALTER TABLE `work_days` ADD COLUMN `isAbsence` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -50,8 +56,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "work_day_database"
                 )
-                    .addMigrations(MIGRATION_3_4)
-                    .fallbackToDestructiveMigrationFrom(1, 2) // Mantém flexibilidade se necessário, mas 3->4 tem migration
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                    .fallbackToDestructiveMigration() // Garante que o app abra mesmo se a migração falhar
                     .build()
                 INSTANCE = instance
                 instance

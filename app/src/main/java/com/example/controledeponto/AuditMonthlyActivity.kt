@@ -1,17 +1,16 @@
 /*
  * Nome: AuditMonthlyActivity.kt
- * Versão: 2.8.0
+ * Versão: 2.9.0
  * Data: 12/02/2025
- * Hora: 16:30
+ * Hora: 18:00
  * Descrição: Tela de auditoria detalhada que lista todos os registros do mês.
- * Atualizada para exibir o tempo individual de cada intervalo e o total por categoria.
+ * Atualizada para exibir sinalização de faltas.
  * 
  * Histórico de Modificações:
  * 24/05/2024 23:30 - Alterada para usar WorkDayWithIntervals, garantindo contabilização correta de pausas nos totais.
  * 12/02/2025 15:10 - Adicionada chamada ao updateAuditUi() no onCreate para carregar dados iniciais.
- * 12/02/2025 15:30 - Melhorada a exibição de intervalos e pausas no adapter.
- * 12/02/2025 16:00 - Adicionado cálculo e exibição do tempo total por categoria de intervalo.
  * 12/02/2025 16:30 - Refinada a formatação de duração para incluir tempo individual e total formatado.
+ * 12/02/2025 18:00 - Adicionada exibição visual para dias com falta sinalizada.
  */
 
 package com.example.controledeponto
@@ -141,57 +140,63 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 val dayWithIntervals = item.dayWithIntervals
                 val day = dayWithIntervals.workDay
                 val dayOfWeek = day.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale("pt", "BR"))
-                itemBinding.tvDayDate.text = "${day.date.format(DateTimeFormatter.ofPattern("dd/MM"))} - $dayOfWeek"
+                
+                val absenceSuffix = if (day.isAbsence) " - [FALTA]" else ""
+                itemBinding.tvDayDate.text = "${day.date.format(DateTimeFormatter.ofPattern("dd/MM"))} - $dayOfWeek$absenceSuffix"
+                itemBinding.tvDayDate.setTextColor(if (day.isAbsence) Color.parseColor("#EF5350") else Color.WHITE)
 
                 val ent = day.clockIn?.format(timeFormatter) ?: "--:--"
                 val sai = day.clockOut?.format(timeFormatter) ?: "--:--"
-                itemBinding.tvTimes.text = "Entrada: $ent | Saída: $sai"
+                itemBinding.tvTimes.text = if (day.isAbsence) "Dia com falta sinalizada" else "Entrada: $ent | Saída: $sai"
 
-                // Lógica para Intervalos Regulares (Legado + Novos do tipo LUNCH)
-                val regularDetails = mutableListOf<String>()
-                var regularTotalMinutes = 0L
-                
-                // Intervalo legado (breakStart/End)
-                if (day.breakStart != null) {
-                    val bStart = day.breakStart
-                    val bEnd = day.breakEnd ?: (if (day.date == LocalDate.now()) LocalTime.now() else bStart)
-                    val diff = ChronoUnit.MINUTES.between(bStart, bEnd).coerceAtLeast(0)
-                    regularTotalMinutes += diff
-                    regularDetails.add("${bStart.format(timeFormatter)} - ${bEnd.format(timeFormatter)} (${formatDuration(diff)})")
-                }
-                
-                // Novos intervalos marcados como Almoço
-                val lunchIntervals = dayWithIntervals.intervals.filter { it.type == IntervalType.LUNCH }
-                lunchIntervals.forEach { interval ->
-                    val iStart = interval.startTime
-                    val iEnd = interval.endTime ?: (if (day.date == LocalDate.now()) LocalTime.now() else iStart)
-                    val diff = ChronoUnit.MINUTES.between(iStart, iEnd).coerceAtLeast(0)
-                    regularTotalMinutes += diff
-                    regularDetails.add("${iStart.format(timeFormatter)} - ${iEnd.format(timeFormatter)} (${formatDuration(diff)})")
-                }
-
-                if (regularDetails.isEmpty()) {
+                if (day.isAbsence) {
                     itemBinding.tvIntervalsRegular.visibility = View.GONE
-                } else {
-                    itemBinding.tvIntervalsRegular.visibility = View.VISIBLE
-                    itemBinding.tvIntervalsRegular.text = "Regulares: ${regularDetails.joinToString(" | ")} - Total: ${formatDuration(regularTotalMinutes)}"
-                }
-
-                // Lógica para Pausas (Novos intervalos que NÃO são LUNCH)
-                val otherIntervals = dayWithIntervals.intervals.filter { it.type != IntervalType.LUNCH }
-                if (otherIntervals.isEmpty()) {
                     itemBinding.tvIntervalsPauses.visibility = View.GONE
                 } else {
-                    itemBinding.tvIntervalsPauses.visibility = View.VISIBLE
-                    var pauseTotalMinutes = 0L
-                    val pausesDetails = otherIntervals.map { interval ->
+                    // Lógica para Intervalos Regulares (Legado + Novos do tipo LUNCH)
+                    val regularDetails = mutableListOf<String>()
+                    var regularTotalMinutes = 0L
+                    
+                    if (day.breakStart != null) {
+                        val bStart = day.breakStart
+                        val bEnd = day.breakEnd ?: (if (day.date == LocalDate.now()) LocalTime.now() else bStart)
+                        val diff = ChronoUnit.MINUTES.between(bStart, bEnd).coerceAtLeast(0)
+                        regularTotalMinutes += diff
+                        regularDetails.add("${bStart.format(timeFormatter)} - ${bEnd.format(timeFormatter)} (${formatDuration(diff)})")
+                    }
+                    
+                    val lunchIntervals = dayWithIntervals.intervals.filter { it.type == IntervalType.LUNCH }
+                    lunchIntervals.forEach { interval ->
                         val iStart = interval.startTime
                         val iEnd = interval.endTime ?: (if (day.date == LocalDate.now()) LocalTime.now() else iStart)
                         val diff = ChronoUnit.MINUTES.between(iStart, iEnd).coerceAtLeast(0)
-                        pauseTotalMinutes += diff
-                        "${iStart.format(timeFormatter)}-${iEnd.format(timeFormatter)} (${formatDuration(diff)})"
+                        regularTotalMinutes += diff
+                        regularDetails.add("${iStart.format(timeFormatter)} - ${iEnd.format(timeFormatter)} (${formatDuration(diff)})")
                     }
-                    itemBinding.tvIntervalsPauses.text = "Pausas: ${pausesDetails.joinToString(", ")} - Total: ${formatDuration(pauseTotalMinutes)}"
+
+                    if (regularDetails.isEmpty()) {
+                        itemBinding.tvIntervalsRegular.visibility = View.GONE
+                    } else {
+                        itemBinding.tvIntervalsRegular.visibility = View.VISIBLE
+                        itemBinding.tvIntervalsRegular.text = "Regulares: ${regularDetails.joinToString(" | ")} - Total: ${formatDuration(regularTotalMinutes)}"
+                    }
+
+                    // Lógica para Pausas (Novos intervalos que NÃO são LUNCH)
+                    val otherIntervals = dayWithIntervals.intervals.filter { it.type != IntervalType.LUNCH }
+                    if (otherIntervals.isEmpty()) {
+                        itemBinding.tvIntervalsPauses.visibility = View.GONE
+                    } else {
+                        itemBinding.tvIntervalsPauses.visibility = View.VISIBLE
+                        var pauseTotalMinutes = 0L
+                        val pausesDetails = otherIntervals.map { interval ->
+                            val iStart = interval.startTime
+                            val iEnd = interval.endTime ?: (if (day.date == LocalDate.now()) LocalTime.now() else iStart)
+                            val diff = ChronoUnit.MINUTES.between(iStart, iEnd).coerceAtLeast(0)
+                            pauseTotalMinutes += diff
+                            "${iStart.format(timeFormatter)}-${iEnd.format(timeFormatter)} (${formatDuration(diff)})"
+                        }
+                        itemBinding.tvIntervalsPauses.text = "Pausas: ${pausesDetails.joinToString(", ")} - Total: ${formatDuration(pauseTotalMinutes)}"
+                    }
                 }
 
                 val prefs = PreferenceManager.getDefaultSharedPreferences(itemView.context)

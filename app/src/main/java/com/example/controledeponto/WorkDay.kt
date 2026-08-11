@@ -1,14 +1,14 @@
 /*
  * Nome: WorkDay.kt
- * Versão: 1.2.0
- * Data: 25/05/2024
- * Hora: 16:00
+ * Versão: 1.3.0
+ * Data: 12/02/2025
+ * Hora: 17:00
  * Descrição: Entidade que representa um dia de trabalho. 
- * Atualizada para garantir que o total de horas trabalhadas desconte corretamente todos os intervalos (novos e legados).
+ * Atualizada para incluir sinalização de falta (isAbsence).
  * 
  * Histórico de Modificações:
- * 25/05/2024 16:00 - Corrigida a lógica de cálculo de minutos para somar intervalos novos e legados em vez de tratá-los como exclusivos.
- * 25/05/2024 16:00 - Atualizada predição de saída para considerar a soma total de pausas.
+ * 25/05/2024 16:00 - Corrigida a lógica de cálculo de minutos para somar intervalos novos e legados.
+ * 12/02/2025 17:00 - Adicionado campo isAbsence para permitir contabilizar faltas no saldo de horas.
  */
 
 package com.example.controledeponto
@@ -27,13 +27,16 @@ data class WorkDay(
     val breakEnd: LocalTime? = null,
     val clockOut: LocalTime? = null,
     val isHolidayOrOffDay: Boolean = false,
-    val holidayName: String? = null
+    val holidayName: String? = null,
+    val isAbsence: Boolean = false
 ) {
     /**
      * Calcula o total de minutos trabalhados no dia.
-     * Fórmula: (Saída - Entrada) - Soma(intervalos_novos + intervalo_legado)
+     * Se for falta, retorna 0.
      */
     fun calculateTotalMinutes(intervals: List<WorkInterval> = emptyList(), isToday: Boolean = false): Long {
+        if (isAbsence) return 0L
+        
         val start = clockIn?.truncatedTo(ChronoUnit.MINUTES) ?: return 0L
         val now = LocalTime.now().truncatedTo(ChronoUnit.MINUTES)
         val end = (clockOut ?: (if (isToday) now else start)).truncatedTo(ChronoUnit.MINUTES)
@@ -59,6 +62,7 @@ data class WorkDay(
      * Calcula o total de minutos em pausa usando os campos legados.
      */
     fun calculateBreakMinutes(isToday: Boolean = false): Long {
+        if (isAbsence) return 0L
         val start = breakStart?.truncatedTo(ChronoUnit.MINUTES) ?: return 0L
         val end = (breakEnd ?: if (isToday) LocalTime.now() else start).truncatedTo(ChronoUnit.MINUTES)
         return ChronoUnit.MINUTES.between(start, end).coerceAtLeast(0)
@@ -69,9 +73,9 @@ data class WorkDay(
      * Considera todos os intervalos registrados para empurrar a hora de saída.
      */
     fun getNextPrediction(targetMinutes: Long, intervals: List<WorkInterval>): Pair<String, LocalTime>? {
+        if (isAbsence || clockOut != null) return null
         val start = clockIn?.truncatedTo(ChronoUnit.MINUTES) ?: return null
-        if (clockOut != null) return null
-
+        
         val now = LocalTime.now().truncatedTo(ChronoUnit.MINUTES)
         
         // Se houver qualquer intervalo ativo (novo ou legado), não há predição de saída
