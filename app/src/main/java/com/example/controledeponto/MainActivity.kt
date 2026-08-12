@@ -1,9 +1,10 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 4.3.0
+ * Versão: 4.4.0
  * Data: 13/02/2025
- * Hora: 14:30
- * Descrição: Atividade principal atualizada para considerar peso 2 em feriados.
+ * Hora: 15:15
+ * Descrição: Atividade principal atualizada para o modelo único de intervalos.
+ * Adicionada exclusão individual de horários do intervalo regular.
  */
 
 package com.example.controledeponto
@@ -585,7 +586,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 R.id.tvBreakStart, R.id.lblBreakStart -> {
                     if (firstInterval != null) {
-                        showEditIntervalDialog(firstInterval)
+                        showClockAdjustDialog(firstInterval.startTime, {
+                            viewModel.deleteInterval(firstInterval)
+                        }) { newTime ->
+                            if (newTime != null) viewModel.updateInterval(firstInterval.copy(startTime = newTime))
+                        }
                     } else {
                         showClockAdjustDialog(null) { newTime ->
                             if (newTime != null) viewModel.startInterval("LUNCH", newTime)
@@ -594,7 +599,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 R.id.tvBreakEnd, R.id.lblBreakEnd -> {
                     if (firstInterval != null) {
-                        showEditIntervalDialog(firstInterval)
+                        showClockAdjustDialog(firstInterval.endTime, {
+                            viewModel.updateInterval(firstInterval.copy(endTime = null))
+                        }) { newTime ->
+                            if (newTime != null) viewModel.updateInterval(firstInterval.copy(endTime = newTime))
+                        }
                     } else {
                         showClockAdjustDialog(null) { newTime ->
                             if (newTime != null) viewModel.endInterval(newTime)
