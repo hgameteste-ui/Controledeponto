@@ -3,9 +3,9 @@
     Nome do Arquivo: item_interval.xml
     Pacote: layout
     Descrição: Layout para os itens da lista de intervalos (RecyclerView).
-    Exibe o tipo do intervalo, os horários de início e fim, e a duração calculada.
+    Atualizado para suporte ao Dark Mode usando colorSurface.
 -->
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
@@ -13,7 +13,10 @@
     android:layout_marginHorizontal="8dp"
     android:layout_marginVertical="4dp"
     app:cardCornerRadius="8dp"
-    app:cardElevation="2dp">
+    app:cardElevation="2dp"
+    app:cardBackgroundColor="?attr/colorSurface"
+    app:strokeWidth="1dp"
+    app:strokeColor="@color/separator_color">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
@@ -58,4 +61,4 @@
             app:layout_constraintTop_toTopOf="@id/tvIntervalTimes" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

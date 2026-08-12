@@ -1,21 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
  * Nome: dialog_interval_edit.xml
- * Versão: 1.1.0
- * Data: 25/05/2024
+ * Versão: 1.2.0
+ * Data: 13/02/2025
  * Hora: 16:45
- * Descrição: Layout para edição de intervalos registrados, permitindo ajustar início e fim e também excluir o registro.
- *
- * Histórico de Modificações:
- * 25/05/2024 16:30 - Criação inicial.
- * 25/05/2024 16:45 - Adicionado botão de exclusão para centralizar ações do intervalo.
+ * Descrição: Layout para edição de intervalos, atualizado para suporte ao Dark Mode.
 -->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#1E1E1E"
+    android:background="?attr/colorSurface"
     android:padding="24dp">
 
     <TextView
@@ -23,7 +19,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Editar Intervalo"
-        android:textColor="@color/white"
+        android:textColor="?attr/colorOnSurface"
         android:textSize="18sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"
@@ -36,7 +32,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:text="Início:"
-        android:textColor="#AAAAAA"
+        android:textColor="?android:attr/textColorSecondary"
         android:textSize="14sp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvDialogTitle" />
@@ -47,7 +43,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
-        android:textColor="@color/white"
+        android:textColor="?attr/colorOnSurface"
         android:textSize="18sp"
         app:layout_constraintBaseline_toBaselineOf="@id/lblStart"
         app:layout_constraintEnd_toEndOf="parent"
@@ -60,7 +56,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="32dp"
         android:text="Fim:"
-        android:textColor="#AAAAAA"
+        android:textColor="?android:attr/textColorSecondary"
         android:textSize="14sp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnEditStart" />
@@ -71,7 +67,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
-        android:textColor="@color/white"
+        android:textColor="?attr/colorOnSurface"
         android:textSize="18sp"
         app:layout_constraintBaseline_toBaselineOf="@id/lblEnd"
         app:layout_constraintEnd_toEndOf="parent"
@@ -85,7 +81,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="Excluir Intervalo"
-        android:textColor="#FF5252"
+        android:textColor="@color/status_absence"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnEditEnd" />
 
@@ -96,7 +92,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:text="@string/btn_cancel"
-        android:textColor="#AAAAAA"
+        android:textColor="?android:attr/textColorSecondary"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnDeleteInterval" />
@@ -106,7 +102,6 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:backgroundTint="@color/purple_500"
         android:text="@string/btn_confirm"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

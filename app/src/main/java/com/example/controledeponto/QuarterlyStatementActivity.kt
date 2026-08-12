@@ -1,12 +1,9 @@
-/**
+/*
  * Nome do Arquivo: QuarterlyStatementActivity.kt
- * Pacote: com.example.controledeponto
- * Projeto: Controle de Ponto Eletrônico
- *
- * Descrição:
- * Tela dedicada à exibição do extrato trimestral de horas extras. 
- * Apresenta o histórico mensal do trimestre calendário atual, destacando o saldo 
- * de cada mês e o total acumulado em um componente visual realçado.
+ * Versão: 4.1.0
+ * Data: 13/02/2025
+ * Hora: 16:30
+ * Descrição: Tela de extrato trimestral atualizada para suporte ao Dark Mode.
  */
 
 package com.example.controledeponto
@@ -32,7 +29,6 @@ class QuarterlyStatementActivity : AppCompatActivity() {
     private lateinit var binding: ActivityQuarterlyStatementBinding
     private val viewModel: WorkViewModel by viewModels()
 
-    // Helper para converter DP em Pixels (Senior best practice para UI programática)
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,12 +71,10 @@ class QuarterlyStatementActivity : AppCompatActivity() {
         viewModel.quarterlyMonthlyOvertime.observe(this) { monthlyList ->
             binding.layoutQuarterlyMonths.removeAllViews()
             
-            // 1. Título da Seção (Cabeçalho com espaçamento vertical consistente)
             val titleView = TextView(this).apply {
                 text = getString(R.string.title_quarterly_history)
-                setTextColor(ContextCompat.getColor(context, android.R.color.holo_blue_light))
+                setTextColor(ContextCompat.getColor(context, R.color.purple_500))
                 textSize = 12f
-                // Espaçamento generoso abaixo do título para separar da lista
                 setPadding(8.dp(), 16.dp(), 8.dp(), 16.dp()) 
                 setTypeface(null, Typeface.BOLD)
                 letterSpacing = 0.1f
@@ -97,7 +91,6 @@ class QuarterlyStatementActivity : AppCompatActivity() {
                 val isPositive = minutes >= 0
                 val sign = if (isPositive) "+" else "-"
                 
-                // 2. CardView para consistência visual com o Card de Total
                 val monthCard = MaterialCardView(this).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
@@ -107,37 +100,33 @@ class QuarterlyStatementActivity : AppCompatActivity() {
                     }
                     radius = 16.dp().toFloat()
                     cardElevation = 2.dp().toFloat()
-                    // Fundo preto sutil/dark background
-                    setCardBackgroundColor(ContextCompat.getColor(context, android.R.color.background_dark))
+                    setCardBackgroundColor(ContextCompat.getColorStateList(this@QuarterlyStatementActivity, R.color.card_audit_bg))
                     strokeWidth = 1.dp()
-                    strokeColor = ContextCompat.getColor(context, android.R.color.darker_gray)
+                    strokeColor = ContextCompat.getColor(context, R.color.separator_color)
                     
                     isClickable = true
                     isFocusable = true
                     setOnClickListener { showMonthlyDetails(month) }
                 }
 
-                // 3. Container Bi-coluna (Restaurar Rótulos e Alinhamento)
                 val rowContainer = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     setPadding(20.dp(), 24.dp(), 20.dp(), 24.dp())
                     gravity = Gravity.CENTER_VERTICAL
                 }
 
-                // Coluna Esquerda: Mês (Cor padrão/branca)
                 val monthTextView = TextView(this).apply {
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     text = month
                     textSize = 16f
-                    setTextColor(ContextCompat.getColor(context, android.R.color.white))
+                    setTextColor(ContextCompat.getColor(context, R.color.audit_text_primary))
                 }
 
-                // Coluna Direita: Valor (Verde Neon / Vermelho)
                 val valueTextView = TextView(this).apply {
                     text = String.format(Locale.getDefault(), "%s%02dh %02dm", sign, hours, mins)
                     textSize = 16f
-                    setTypeface(Typeface.MONOSPACE, Typeface.BOLD) // Monospace para alinhar números
-                    val colorRes = if (isPositive) android.R.color.holo_green_light else android.R.color.holo_red_light
+                    setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+                    val colorRes = if (isPositive) R.color.status_success else R.color.status_absence
                     setTextColor(ContextCompat.getColor(context, colorRes))
                 }
 
@@ -148,7 +137,6 @@ class QuarterlyStatementActivity : AppCompatActivity() {
             }
 
             if (monthlyList.isNotEmpty()) {
-                // Espaçador para separar o histórico do total acumulado
                 binding.layoutQuarterlyMonths.addView(View(this).apply {
                     layoutParams = LinearLayout.LayoutParams(1, 24.dp())
                 })
@@ -168,9 +156,9 @@ class QuarterlyStatementActivity : AppCompatActivity() {
                     }
                     radius = 24.dp().toFloat()
                     cardElevation = 8.dp().toFloat()
-                    setCardBackgroundColor(ContextCompat.getColor(context, android.R.color.background_dark))
+                    setCardBackgroundColor(ContextCompat.getColorStateList(this@QuarterlyStatementActivity, R.color.card_balance_bg))
                     strokeWidth = 2.dp()
-                    strokeColor = ContextCompat.getColor(context, android.R.color.holo_blue_light)
+                    strokeColor = ContextCompat.getColor(context, R.color.text_header_themed)
                 }
 
                 val totalContent = LinearLayout(this).apply {
@@ -182,7 +170,7 @@ class QuarterlyStatementActivity : AppCompatActivity() {
                 totalContent.addView(TextView(this).apply {
                     text = getString(R.string.label_total_accumulated)
                     textSize = 11f
-                    setTextColor(ContextCompat.getColor(context, android.R.color.holo_blue_light))
+                    setTextColor(ContextCompat.getColor(context, R.color.text_header_themed))
                     setTypeface(null, Typeface.BOLD)
                     letterSpacing = 0.2f
                     setAllCaps(true)
@@ -191,7 +179,7 @@ class QuarterlyStatementActivity : AppCompatActivity() {
                 totalContent.addView(TextView(this).apply {
                     text = String.format(Locale.getDefault(), "%s%02dh %02dm", totalSign, totalHours, totalMins)
                     textSize = 32f
-                    val colorRes = if (isTotalPositive) android.R.color.holo_green_light else android.R.color.holo_red_light
+                    val colorRes = if (isTotalPositive) R.color.status_success else R.color.status_absence
                     setTextColor(ContextCompat.getColor(context, colorRes))
                     setTypeface(null, Typeface.BOLD)
                     setPadding(0, 8.dp(), 0, 0)
@@ -203,7 +191,7 @@ class QuarterlyStatementActivity : AppCompatActivity() {
                 val emptyView = TextView(this).apply {
                     text = getString(R.string.empty_quarterly_records)
                     textSize = 14f
-                    setTextColor(ContextCompat.getColor(context, android.R.color.darker_gray))
+                    setTextColor(ContextCompat.getColor(context, R.color.audit_text_secondary))
                     setPadding(0, 32.dp(), 0, 0)
                     gravity = Gravity.CENTER
                 }

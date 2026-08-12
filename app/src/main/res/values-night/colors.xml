@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Semantic Colors for Dark Theme -->
+    <color name="card_balance_bg">#2C1B3D</color> <!-- Dark purple -->
+    <color name="card_prediction_bg">#1A3330</color> <!-- Dark teal -->
+    <color name="card_audit_bg">#1E1E1E</color>
+
+    <color name="text_tri_themed">#D1C4E9</color> <!-- Light purple -->
+    <color name="text_mes_themed">#E1BEE7</color> <!-- Lighter purple -->
+    <color name="text_header_themed">#CE93D8</color> <!-- Medium light purple -->
+    <color name="prediction_text_color">#80CBC4</color> <!-- Light teal -->
+    <color name="prediction_subtext_color">#4DB6AC</color> <!-- Medium teal -->
+
+    <color name="audit_text_primary">#E0E0E0</color>
+    <color name="audit_text_secondary">#BDBDBD</color>
+    <color name="separator_color">#333333</color>
+
+    <!-- Status Colors (adjusted for dark) -->
+    <color name="status_holiday">#FFF176</color>
+    <color name="status_absence">#EF5350</color>
+    <color name="status_success">#A5D6A7</color>
+    <color name="status_warning">#FFCC80</color>
+</resources>

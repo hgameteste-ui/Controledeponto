@@ -1,9 +1,9 @@
 /*
  * Nome: AuditMonthlyActivity.kt
- * Versão: 4.1.0
+ * Versão: 4.1.1
  * Data: 13/02/2025
- * Hora: 14:45
- * Descrição: Tela de auditoria detalhada atualizada para o modelo único de intervalos e peso 2 em feriados.
+ * Hora: 15:30
+ * Descrição: Tela de auditoria detalhada atualizada para o modelo único de intervalos e suporte total ao Dark Mode.
  */
 
 package com.example.controledeponto
@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.controledeponto.databinding.ActivityAuditMonthlyBinding
@@ -153,9 +154,9 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 
                 itemBinding.tvDayDate.text = "${day.date.format(DateTimeFormatter.ofPattern("dd/MM"))} - $dayOfWeek$statusSuffix"
                 val dateColor = when {
-                    day.isAbsence -> Color.parseColor("#EF5350")
-                    day.isHolidayOrOffDay -> Color.parseColor("#FFCA28")
-                    else -> Color.WHITE
+                    day.isAbsence -> ContextCompat.getColor(itemView.context, R.color.status_absence)
+                    day.isHolidayOrOffDay -> ContextCompat.getColor(itemView.context, R.color.status_holiday)
+                    else -> ContextCompat.getColor(itemView.context, R.color.audit_text_primary)
                 }
                 itemBinding.tvDayDate.setTextColor(dateColor)
 
@@ -221,13 +222,17 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 val absBalance = Math.abs(balance)
                 val sign = if (balance >= 0) "+" else "-"
                 itemBinding.tvDayBalance.text = String.format("%s%02dh %02dm", sign, absBalance / 60, absBalance % 60)
-                itemBinding.tvDayBalance.setTextColor(if (balance >= 0) Color.parseColor("#66BB6A") else Color.parseColor("#FFA726"))
+                itemBinding.tvDayBalance.setTextColor(
+                    ContextCompat.getColor(itemView.context, if (balance >= 0) R.color.status_success else R.color.status_warning)
+                )
 
                 val acc = item.runningBalance
                 val absAcc = Math.abs(acc)
                 val accSign = if (acc >= 0) "+" else "-"
                 itemBinding.tvAccumulatedRunningBalance.text = String.format("Acumulado: %s%02dh %02dm", accSign, absAcc / 60, absAcc % 60)
-                itemBinding.tvAccumulatedRunningBalance.setTextColor(if (acc >= 0) Color.parseColor("#81C784") else Color.parseColor("#FFA726"))
+                itemBinding.tvAccumulatedRunningBalance.setTextColor(
+                    ContextCompat.getColor(itemView.context, if (acc >= 0) R.color.status_success else R.color.status_warning)
+                )
 
                 itemBinding.root.setOnClickListener { onClick(day) }
             }

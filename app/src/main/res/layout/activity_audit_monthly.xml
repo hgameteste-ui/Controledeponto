@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212"
+    android:background="?android:attr/windowBackground"
     tools:context=".AuditMonthlyActivity">
 
     <com.google.android.material.appbar.AppBarLayout
@@ -24,12 +24,12 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Seletor de Período v2.1.6 -->
+    <!-- Seletor de Período -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/layoutSelector"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#1E1E1E"
+        android:background="?attr/colorSurface"
         android:padding="8dp"
         app:layout_constraintTop_toBottomOf="@id/appBarLayout">
 
@@ -45,13 +45,13 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:tint="@color/white" />
+            app:tint="?attr/colorOnSurface" />
 
         <TextView
             android:id="@+id/tvAuditMonth"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="@color/white"
+            android:textColor="?attr/colorOnSurface"
             android:textSize="18sp"
             android:textStyle="bold"
             app:layout_constraintBottom_toBottomOf="parent"
@@ -72,7 +72,7 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:tint="@color/white" />
+            app:tint="?attr/colorOnSurface" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
