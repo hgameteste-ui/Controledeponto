@@ -1,10 +1,9 @@
 /*
  * Nome: AuditMonthlyActivity.kt
- * Versão: 4.0.0
+ * Versão: 4.1.0
  * Data: 13/02/2025
- * Hora: 11:45
- * Descrição: Tela de auditoria detalhada atualizada para o modelo único de intervalos.
- * Removidos campos legados e unificada a visualização da linha do tempo.
+ * Hora: 14:45
+ * Descrição: Tela de auditoria detalhada atualizada para o modelo único de intervalos e peso 2 em feriados.
  */
 
 package com.example.controledeponto
@@ -106,9 +105,11 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 val worked = dayWithIntervals.calculateTotalMinutes(isToday = day.date == LocalDate.now())
                 
                 val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-                val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
+                val isHoliday = day.isHolidayOrOffDay
+                val effectiveGoal = if (isWeekend || isHoliday) 0L else dailyGoalMinutes
                 
-                accumulator += (worked - effectiveGoal)
+                val weightedWorked = if (isHoliday) worked * 2 else worked
+                accumulator += (weightedWorked - effectiveGoal)
                 AuditItem(dayWithIntervals, accumulator)
             }
             notifyDataSetChanged()
@@ -206,15 +207,17 @@ class AuditMonthlyActivity : AppCompatActivity() {
                 val prefs = PreferenceManager.getDefaultSharedPreferences(itemView.context)
                 val dailyGoalMinutes = (prefs.getString("work_hours", "8")?.toLong() ?: 8L) * 60
                 val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-                val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
+                val isHoliday = day.isHolidayOrOffDay
+                val effectiveGoal = if (isWeekend || isHoliday) 0L else dailyGoalMinutes
 
                 itemBinding.tvDayGoal.text = when {
                     day.isAbsence -> "Meta: ${formatDuration(dailyGoalMinutes)} (Falta)"
-                    day.isHolidayOrOffDay -> "Meta: 00h 00m - ${day.holidayName ?: "Feriado/Folga"}"
+                    isHoliday -> "Meta: 00h 00m - ${day.holidayName ?: "Feriado/Folga"}"
                     else -> String.format("Meta: %02dh %02dm", effectiveGoal / 60, effectiveGoal % 60)
                 }
 
-                val balance = worked - effectiveGoal
+                val weightedWorked = if (isHoliday) worked * 2 else worked
+                val balance = weightedWorked - effectiveGoal
                 val absBalance = Math.abs(balance)
                 val sign = if (balance >= 0) "+" else "-"
                 itemBinding.tvDayBalance.text = String.format("%s%02dh %02dm", sign, absBalance / 60, absBalance % 60)

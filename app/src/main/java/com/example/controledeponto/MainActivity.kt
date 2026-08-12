@@ -1,11 +1,9 @@
 /*
  * Nome: MainActivity.kt
- * Versão: 4.2.3
+ * Versão: 4.3.0
  * Data: 13/02/2025
- * Hora: 12:55
- * Descrição: Atividade principal atualizada para o modelo único de intervalos.
- * Removidos campos legados, unificada a gestão de pausas e removidos elementos visuais (timeline/progress).
- * Corrigido erro de contexto no Intent de configurações.
+ * Hora: 14:30
+ * Descrição: Atividade principal atualizada para considerar peso 2 em feriados.
  */
 
 package com.example.controledeponto
@@ -502,21 +500,26 @@ class MainActivity : AppCompatActivity() {
         val totalInterval = workDay?.calculateBreakMinutes(currentIntervals, selectedDate == LocalDate.now()) ?: 0L
         binding.tvTotalBreakTime.text = "Total em Intervalo: ${formatTime(totalInterval)}"
 
-        val effectiveGoal = if (selectedDate.dayOfWeek.value > 5 || workDay?.isHolidayOrOffDay == true) 0L else targetMinutes
-        val balance = totalWorked - effectiveGoal
+        val isHoliday = workDay?.isHolidayOrOffDay == true
+        val effectiveGoal = if (selectedDate.dayOfWeek.value > 5 || isHoliday) 0L else targetMinutes
+        
+        // Peso 2 para feriados no saldo diário
+        val weightedWorked = if (isHoliday) totalWorked * 2 else totalWorked
+        val balance = weightedWorked - effectiveGoal
+        
         binding.tvDailyOvertime.text = (if (balance >= 0) "+" else "-") + formatTime(balance)
         binding.tvDailyOvertime.setTextColor(resources.getColor(if (balance >= 0) android.R.color.holo_green_dark else android.R.color.holo_red_dark, theme))
         
         val nextEvent = workDay?.getNextPrediction(targetMinutes, currentIntervals)
         binding.tvPrediction.text = when {
             workDay?.isAbsence == true -> "Dia de Falta Sinalizada"
-            workDay?.isHolidayOrOffDay == true && totalWorked == 0L -> "Feriado: Meta Zero"
+            isHoliday && totalWorked == 0L -> "Feriado: Meta Zero"
             else -> nextEvent?.let { "${it.first} Estimada: ${it.second.format(timeFormatter)}" } ?: "Jornada Concluída"
         }
         
         binding.tvRemaining.text = when {
             workDay?.isAbsence == true -> "Meta do dia será descontada do saldo"
-            workDay?.isHolidayOrOffDay == true && totalWorked == 0L -> "Aproveite o descanso!"
+            isHoliday && totalWorked == 0L -> "Aproveite o descanso!"
             totalWorked < effectiveGoal -> "Faltam ${formatTime(effectiveGoal - totalWorked)}"
             else -> "Meta atingida!"
         }

@@ -1,10 +1,10 @@
 /*
  * Nome: WorkViewModel.kt
- * Versão: 3.0.0
+ * Versão: 3.1.1
  * Data: 13/02/2025
- * Hora: 11:15
- * Descrição: ViewModel atualizado para modelo único de intervalos.
- * Removida lógica de campos legados (breakStart/End) em favor da tabela WorkInterval.
+ * Hora: 14:15
+ * Descrição: ViewModel atualizado para considerar peso 2 em horas trabalhadas no feriado.
+ * Corrigidos erros de referência pendentes na exportação.
  */
 
 package com.example.controledeponto
@@ -200,8 +200,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             val worked = dayWithIntervals.calculateTotalMinutes(isToday = dayWithIntervals.workDay.date == now)
             val day = dayWithIntervals.workDay
             val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
-            val diff = worked - effectiveGoal
+            val isHoliday = day.isHolidayOrOffDay
+            val effectiveGoal = if (isWeekend || isHoliday || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
+            
+            // Peso 2 para feriados
+            val weightedWorked = if (isHoliday) worked * 2 else worked
+            val diff = weightedWorked - effectiveGoal
             if (onlySurplus) diff.coerceAtLeast(0L) else diff
         }
     }
@@ -222,8 +226,11 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             val worked = dayWithIntervals.calculateTotalMinutes(isToday = dayWithIntervals.workDay.date == now)
             val day = dayWithIntervals.workDay
             val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-            val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
-            worked - effectiveGoal
+            val isHoliday = day.isHolidayOrOffDay
+            val effectiveGoal = if (isWeekend || isHoliday || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
+            
+            val weightedWorked = if (isHoliday) worked * 2 else worked
+            weightedWorked - effectiveGoal
         }
     }
 
@@ -243,8 +250,11 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 val worked = dayWithIntervals.calculateTotalMinutes(isToday = dayWithIntervals.workDay.date == now)
                 val day = dayWithIntervals.workDay
                 val isWeekend = day.date.dayOfWeek == DayOfWeek.SATURDAY || day.date.dayOfWeek == DayOfWeek.SUNDAY
-                val effectiveGoal = if (isWeekend || day.isHolidayOrOffDay || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
-                worked - effectiveGoal
+                val isHoliday = day.isHolidayOrOffDay
+                val effectiveGoal = if (isWeekend || isHoliday || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
+                
+                val weightedWorked = if (isHoliday) worked * 2 else worked
+                weightedWorked - effectiveGoal
             }
             val monthName = month.getDisplayName(TextStyle.FULL, Locale.getDefault())
                 .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
@@ -294,10 +304,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             }
             current.clockOut == null -> {
                 // Se não houver intervalo ativo, inicia um novo ou finaliza o dia
-                // Regra: Se já temos a entrada mas não temos saída, o botão alterna entre
-                // INICIAR INTERVALO e FINALIZAR DIA dependendo do contexto.
-                // Para manter compatibilidade com a "máquina de estados" do botão Punch:
-                // Se não há intervalos registrados, o próximo passo do Punch é INICIAR INTERVALO.
                 if (currentIntervals.isEmpty()) {
                     startInterval("LUNCH", timeToRegister)
                 } else {
@@ -493,20 +499,12 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                         }
 
                         val clockIn = if (parts.size > 1) flexibleParseTime(parts[1]) else null
-                        // Nota: O importador CSV aqui ainda assume o formato antigo de colunas
-                        // Para o modelo único, idealmente breakStart/End seriam convertidos em intervalos.
                         val breakStart = if (parts.size > 2) flexibleParseTime(parts[2]) else null
                         val breakEnd = if (parts.size > 3) flexibleParseTime(parts[3]) else null
                         val clockOut = if (parts.size > 4) flexibleParseTime(parts[4]) else null
                         
                         if (clockIn != null || clockOut != null || breakStart != null || breakEnd != null) {
-                            // Criamos o WorkDay básico. Os intervalos serão processados no confirmImport se necessário.
-                            // Para simplificar a migração no CSV, podemos guardar temporariamente ou 
-                            // adaptar o modelo de importação.
                             previewList.add(WorkDay(date, clockIn, clockOut))
-                            // Se houver breakStart/End no CSV, precisamos tratar isso como intervalo.
-                            // Mas WorkDay agora não tem esses campos. 
-                            // Vou adicionar suporte a uma lista temporária ou injetar diretamente no banco.
                             if (breakStart != null) {
                                 launch(Dispatchers.IO) {
                                     repository.insertInterval(WorkInterval(workDayId = date, startTime = breakStart, endTime = breakEnd, type = IntervalType.LUNCH))
@@ -586,7 +584,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 list.forEach { item ->
                     val worked = item.calculateTotalMinutes(isToday = item.workDay.date == LocalDate.now())
                     val day = item.workDay
-                    // Exporta o primeiro intervalo como "Pausa Principal" para manter o formato do CSV
                     val mainBreak = item.intervals.sortedBy { it.startTime }.firstOrNull()
                     builder.append("${day.date.format(df)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};${String.format("%02dh %02dm", worked/60, worked%60)}\n")
                 }
@@ -611,9 +608,11 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                     allData.forEach { item ->
                         val day = item.workDay
                         val totalMinutes = item.calculateTotalMinutes(isToday = day.date == LocalDate.now())
-                        val effectiveGoal = if (day.date.dayOfWeek.value > 5 || day.isHolidayOrOffDay) 0L else dailyGoalMinutes
+                        val isHoliday = day.isHolidayOrOffDay
+                        val weightedWorked = if (isHoliday) totalMinutes * 2 else totalMinutes
+                        val effectiveGoal = if (day.date.dayOfWeek.value > 5 || isHoliday) 0L else dailyGoalMinutes
                         val mainBreak = item.intervals.sortedBy { it.startTime }.firstOrNull()
-                        writer.write("${day.date.format(df)};${day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};$totalMinutes;$effectiveGoal;${totalMinutes-effectiveGoal};${if(day.isHolidayOrOffDay) "Feriado" else "Util"}\n")
+                        writer.write("${day.date.format(df)};${day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};$totalMinutes;$effectiveGoal;${weightedWorked-effectiveGoal};${if(day.isHolidayOrOffDay) "Feriado" else "Util"}\n")
                     }
                 }
             }
