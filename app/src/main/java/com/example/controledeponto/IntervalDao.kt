@@ -1,11 +1,9 @@
 /**
  * Nome: IntervalDao.kt
- * Data: 24/05/2024
- * Hora: 10:10
- * Descrição: Interface DAO para gerenciar os intervalos de trabalho na tabela 'intervals'.
- * Histórico: 
- * - 24/05/2024: Criação inicial com métodos CRUD básicos.
- * - 24/05/2024: Adicionado getAllIntervals para cálculos globais.
+ * Data: 13/02/2025
+ * Hora: 19:15
+ * Descrição: Interface DAO para gerenciar os intervalos de trabalho.
+ * Atualizada: Adicionado método para exclusão por data para facilitar importação.
  */
 
 package com.example.controledeponto
@@ -24,6 +22,9 @@ interface IntervalDao {
 
     @Delete
     suspend fun delete(interval: WorkInterval)
+
+    @Query("DELETE FROM intervals WHERE workDayId = :date")
+    suspend fun deleteIntervalsByDate(date: LocalDate)
 
     @Query("SELECT * FROM intervals WHERE workDayId = :date ORDER BY startTime ASC")
     fun getIntervalsByDate(date: LocalDate): Flow<List<WorkInterval>>

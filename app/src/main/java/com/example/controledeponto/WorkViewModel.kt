@@ -1,10 +1,10 @@
 /*
  * Nome: WorkViewModel.kt
- * Versão: 3.1.1
+ * Versão: 3.4.1
  * Data: 13/02/2025
- * Hora: 14:15
- * Descrição: ViewModel atualizado para considerar peso 2 em horas trabalhadas no feriado.
- * Corrigidos erros de referência pendentes na exportação.
+ * Hora: 19:45
+ * Descrição: ViewModel com suporte a importação atômica, múltiplas pausas e metadados de feriados.
+ * Corrigido bug de travamento na importação e adicionada coluna de Nome do Feriado.
  */
 
 package com.example.controledeponto
@@ -203,7 +203,6 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             val isHoliday = day.isHolidayOrOffDay
             val effectiveGoal = if (isWeekend || isHoliday || (day.date == now && day.clockIn == null && !day.isAbsence)) 0L else dailyGoalMinutes
             
-            // Peso 2 para feriados
             val weightedWorked = if (isHoliday) worked * 2 else worked
             val diff = weightedWorked - effectiveGoal
             if (onlySurplus) diff.coerceAtLeast(0L) else diff
@@ -299,11 +298,9 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 repository.insert(current.copy(clockIn = timeToRegister))
             }
             active != null -> {
-                // Se houver intervalo ativo, finaliza-o (equivalente ao antigo breakEnd)
                 repository.updateInterval(active.copy(endTime = timeToRegister))
             }
             current.clockOut == null -> {
-                // Se não houver intervalo ativo, inicia um novo ou finaliza o dia
                 if (currentIntervals.isEmpty()) {
                     startInterval("LUNCH", timeToRegister)
                 } else {
@@ -454,15 +451,16 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
+    // Estrutura para a prévia de importação detalhada
+    data class ImportPreview(val workDay: WorkDay, val intervals: List<WorkInterval> = emptyList())
+
+    private val _importPreviewDetailed = MutableLiveData<List<ImportPreview>?>()
+    val importPreviewDetailed: LiveData<List<ImportPreview>?> = _importPreviewDetailed
+
     fun importCsv(uri: Uri) = viewModelScope.launch {
         _isProcessing.postValue(true)
-        val previewList = mutableListOf<WorkDay>()
-        val detailReport = StringBuilder()
-        var totalLinesInFile = 0
-        var processedLines = 0
-        var validRecords = 0
-        var errorCount = 0
-        var ignoredCount = 0
+        val previewList = mutableListOf<ImportPreview>()
+        var formatType = "SIMPLE" // "SIMPLE" ou "FULL"
 
         try {
             withContext(Dispatchers.IO) {
@@ -470,108 +468,116 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                 val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
                 
                 reader.lineSequence().forEachIndexed { index, rawLine ->
-                    totalLinesInFile++
                     val line = rawLine.replace("\uFEFF", "").trim()
-                    
+                    if (line.isEmpty()) return@forEachIndexed
+
                     if (index == 0) {
-                        Log.d("WorkViewModel", "Pulando cabeçalho (Linha 0): '$line'")
-                        return@forEachIndexed
-                    }
-                    
-                    processedLines++
-                    if (line.isEmpty()) {
-                        ignoredCount++
-                        Log.d("WorkViewModel", "Linha $index vazia ignorada.")
+                        if (line.contains("Dia da Semana") || line.contains("Meta")) formatType = "FULL"
                         return@forEachIndexed
                     }
                     
                     val parts = line.split(";").map { it.trim().removeSurrounding("\"") }
-                    Log.d("WorkViewModel", "Lendo Linha $index (Colunas: ${parts.size}): $parts")
+                    if (parts.isEmpty()) return@forEachIndexed
 
-                    if (parts.isNotEmpty()) {
-                        val date = flexibleParseDate(parts[0])
-                        if (date == null) {
-                            errorCount++
-                            val msg = "Linha ${index + 1}: Data '${parts[0]}' inválida. Use dd/MM/yyyy."
-                            detailReport.append(msg).append("\n")
-                            Log.e("WorkViewModel", msg)
-                            return@forEachIndexed
-                        }
+                    val date = flexibleParseDate(parts[0]) ?: return@forEachIndexed
 
-                        val clockIn = if (parts.size > 1) flexibleParseTime(parts[1]) else null
-                        val breakStart = if (parts.size > 2) flexibleParseTime(parts[2]) else null
-                        val breakEnd = if (parts.size > 3) flexibleParseTime(parts[3]) else null
-                        val clockOut = if (parts.size > 4) flexibleParseTime(parts[4]) else null
-                        
-                        if (clockIn != null || clockOut != null || breakStart != null || breakEnd != null) {
-                            previewList.add(WorkDay(date, clockIn, clockOut))
-                            if (breakStart != null) {
-                                launch(Dispatchers.IO) {
-                                    repository.insertInterval(WorkInterval(workDayId = date, startTime = breakStart, endTime = breakEnd, type = IntervalType.LUNCH))
-                                }
-                            }
-                            validRecords++
-                        } else {
-                            ignoredCount++
-                            val msg = "Linha ${index + 1}: Data $date sem horários. Ignorada."
-                            detailReport.append(msg).append("\n")
-                            Log.w("WorkViewModel", msg)
-                        }
+                    // Mapeamento de índices baseado no formato detectado
+                    val idxIn: Int; val idxBrkS: Int; val idxBrkE: Int; val idxOut: Int; val idxTipo: Int; val idxNomeF: Int; val idxDet: Int
+                    
+                    if (formatType == "FULL") {
+                        // Data;Dia;Entrada;Início;Fim;Saída;Trabalhado;Meta;Saldo;Tipo;Nome Feriado;Detalhes
+                        idxIn = 2; idxBrkS = 3; idxBrkE = 4; idxOut = 5; idxTipo = 9; idxNomeF = 10; idxDet = 11
                     } else {
-                        ignoredCount++
-                        Log.w("WorkViewModel", "Linha $index sem colunas.")
+                        // Data;Entrada;Início;Fim;Saída;Trabalhado;Tipo;Nome Feriado;Detalhes
+                        idxIn = 1; idxBrkS = 2; idxBrkE = 3; idxOut = 4; idxTipo = 6; idxNomeF = 7; idxDet = 8
+                    }
+
+                    val clockIn = if (parts.size > idxIn) flexibleParseTime(parts[idxIn]) else null
+                    val clockOut = if (parts.size > idxOut) flexibleParseTime(parts[idxOut]) else null
+                    val tipoStr = if (idxTipo != -1 && parts.size > idxTipo) parts[idxTipo] else ""
+                    val nomeFeriado = if (idxNomeF != -1 && parts.size > idxNomeF) parts[idxNomeF] else null
+
+                    val isHoliday = tipoStr.equals("Feriado", ignoreCase = true)
+                    val isAbsence = tipoStr.equals("Falta", ignoreCase = true) || (clockIn == null && clockOut == null && !isHoliday && formatType == "FULL")
+
+                    val intervalsList = mutableListOf<WorkInterval>()
+                    
+                    // 1. Tentar ler intervalos detalhados (Novo Formato)
+                    if (idxDet != -1 && parts.size > idxDet && parts[idxDet].isNotEmpty()) {
+                        parts[idxDet].split("|").forEach { block ->
+                            val times = block.split("-")
+                            if (times.size == 2) {
+                                val s = flexibleParseTime(times[0])
+                                val e = flexibleParseTime(times[1])
+                                if (s != null) intervalsList.add(WorkInterval(workDayId = date, startTime = s, endTime = e, type = if(intervalsList.isEmpty()) IntervalType.LUNCH else IntervalType.BREAK))
+                            }
+                        }
+                    } 
+                    
+                    // 2. Fallback para intervalo legado se não houver detalhados
+                    if (intervalsList.isEmpty()) {
+                        val breakStart = if (parts.size > idxBrkS) flexibleParseTime(parts[idxBrkS]) else null
+                        val breakEnd = if (parts.size > idxBrkE) flexibleParseTime(parts[idxBrkE]) else null
+                        if (breakStart != null) {
+                            intervalsList.add(WorkInterval(workDayId = date, startTime = breakStart, endTime = breakEnd, type = IntervalType.LUNCH))
+                        }
+                    }
+
+                    if (clockIn != null || clockOut != null || intervalsList.isNotEmpty() || isHoliday || isAbsence) {
+                        val wd = WorkDay(date, clockIn, clockOut, isHoliday, if(isHoliday) (nomeFeriado ?: "Feriado") else null, isAbsence)
+                        previewList.add(ImportPreview(wd, intervalsList))
                     }
                 }
             }
             
-            val summary = "Relatório de Leitura:\n" +
-                          "- Linhas no arquivo: $totalLinesInFile\n" +
-                          "- Linhas de dados processadas: $processedLines\n" +
-                          "- Registros válidos (com horários): $validRecords\n" +
-                          "- Linhas ignoradas (vazias/sem dados): $ignoredCount\n" +
-                          "- Linhas com erro de formato: $errorCount\n\n"
-            
-            _importReport.postValue(summary + (if (detailReport.isNotEmpty()) "Problemas encontrados:\n$detailReport" else "Nenhum erro de parsing detectado."))
-
             if (previewList.isEmpty()) {
-                _importStatus.postValue("Nenhum registro para importar. Verifique se o arquivo segue o formato.")
+                _importStatus.postValue("Nenhum registro válido encontrado.")
             } else {
-                _csvPreview.postValue(previewList)
+                _importPreviewDetailed.postValue(previewList)
+                _csvPreview.postValue(previewList.map { it.workDay })
             }
         } catch (e: Exception) {
-            _importStatus.postValue("Falha crítica ao ler arquivo: ${e.message}")
-            Log.e("WorkViewModel", "Erro em importCsv", e)
+            _importStatus.postValue("Erro ao ler arquivo: ${e.message}")
         } finally {
             _isProcessing.postValue(false)
         }
     }
 
-    fun confirmImport(data: List<WorkDay>) = viewModelScope.launch {
+    fun confirmImportDetailed() = viewModelScope.launch {
+        val data = _importPreviewDetailed.value ?: return@launch
         _isProcessing.postValue(true)
         var importedCount = 0
-        var duplicateCount = 0
+        var updatedCount = 0
         try {
             withContext(Dispatchers.IO) {
-                data.forEach { workDay ->
-                    val existing = repository.getWorkDaySync(workDay.date)
-                    if (existing == null) {
-                        repository.insert(workDay)
-                        importedCount++
-                    } else {
-                        duplicateCount++
-                    }
+                data.forEach { item ->
+                    val existing = repository.getWorkDaySync(item.workDay.date)
+                    if (existing == null) importedCount++ else updatedCount++
+                    
+                    // Limpeza atômica de intervalos antigos antes da nova inserção
+                    repository.deleteIntervalsByDate(item.workDay.date)
+                    
+                    repository.insert(item.workDay)
+                    item.intervals.forEach { repository.insertInterval(it) }
                 }
             }
-            _importStatus.postValue("Importação Concluída: $importedCount novos, $duplicateCount já existiam.")
+            _importStatus.postValue("Importação Concluída: $importedCount novos, $updatedCount atualizados.")
+            _importPreviewDetailed.postValue(null)
             _csvPreview.postValue(null)
         } catch (e: Exception) {
-            _importStatus.postValue("Erro ao salvar registros: ${e.message}")
+            _importStatus.postValue("Erro ao salvar: ${e.message}")
         } finally {
             _isProcessing.postValue(false)
         }
     }
 
-    fun clearCsvPreview() { _csvPreview.value = null }
+    fun confirmImport(data: List<WorkDay>) = confirmImportDetailed()
+
+    fun clearCsvPreview() { 
+        _csvPreview.value = null 
+        _importPreviewDetailed.value = null
+    }
+    
     fun clearImportReport() { _importReport.value = null }
 
     fun exportCsv(uri: Uri) = viewModelScope.launch {
@@ -579,13 +585,16 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.IO) {
                 val selectedDate = _selectedDate.value ?: LocalDate.now()
                 val list = repository.getAllWorkDaysWithIntervalsSync().filter { it.workDay.date.month == selectedDate.month && it.workDay.date.year == selectedDate.year }.sortedBy { it.workDay.date }
-                val builder = StringBuilder("Data;Entrada;Início Pausa;Fim Pausa;Saída;Total Trabalhado\n")
+                val builder = StringBuilder("Data;Entrada;Início Pausa;Fim Pausa;Saída;Total Trabalhado;Tipo;Nome Feriado;Intervalos Detalhados\n")
                 val tf = DateTimeFormatter.ofPattern("HH:mm"); val df = DateTimeFormatter.ofPattern("dd/MM/yyyy")
                 list.forEach { item ->
                     val worked = item.calculateTotalMinutes(isToday = item.workDay.date == LocalDate.now())
                     val day = item.workDay
                     val mainBreak = item.intervals.sortedBy { it.startTime }.firstOrNull()
-                    builder.append("${day.date.format(df)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};${String.format("%02dh %02dm", worked/60, worked%60)}\n")
+                    val tipo = when { day.isAbsence -> "Falta"; day.isHolidayOrOffDay -> "Feriado"; else -> "Util" }
+                    val details = item.intervals.joinToString("|") { "${it.startTime.format(tf)}-${it.endTime?.format(tf) ?: ""}" }
+                    
+                    builder.append("${day.date.format(df)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};${String.format("%02dh %02dm", worked/60, worked%60)};$tipo;${day.holidayName ?: ""};$details\n")
                 }
                 getApplication<Application>().contentResolver.openOutputStream(uri)?.use { it.write(builder.toString().toByteArray()) }
             }
@@ -604,7 +613,7 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
 
             getApplication<Application>().contentResolver.openOutputStream(uri)?.use { outputStream ->
                 BufferedWriter(OutputStreamWriter(outputStream, Charsets.UTF_8)).use { writer ->
-                    writer.write("Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;Horas Trabalhadas;Meta;Saldo;Tipo\n")
+                    writer.write("Data;Dia da Semana;Entrada;Início Intervalo;Fim Intervalo;Saída;Horas Trabalhadas;Meta;Saldo;Tipo;Nome Feriado;Intervalos Detalhados\n")
                     allData.forEach { item ->
                         val day = item.workDay
                         val totalMinutes = item.calculateTotalMinutes(isToday = day.date == LocalDate.now())
@@ -612,7 +621,10 @@ class WorkViewModel(application: Application) : AndroidViewModel(application) {
                         val weightedWorked = if (isHoliday) totalMinutes * 2 else totalMinutes
                         val effectiveGoal = if (day.date.dayOfWeek.value > 5 || isHoliday) 0L else dailyGoalMinutes
                         val mainBreak = item.intervals.sortedBy { it.startTime }.firstOrNull()
-                        writer.write("${day.date.format(df)};${day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};$totalMinutes;$effectiveGoal;${weightedWorked-effectiveGoal};${if(day.isHolidayOrOffDay) "Feriado" else "Util"}\n")
+                        val tipo = when { day.isAbsence -> "Falta"; isHoliday -> "Feriado"; else -> "Util" }
+                        val details = item.intervals.joinToString("|") { "${it.startTime.format(tf)}-${it.endTime?.format(tf) ?: ""}" }
+                        
+                        writer.write("${day.date.format(df)};${day.date.dayOfWeek.getDisplayName(TextStyle.FULL, ptBr)};${day.clockIn?.format(tf) ?: ""};${mainBreak?.startTime?.format(tf) ?: ""};${mainBreak?.endTime?.format(tf) ?: ""};${day.clockOut?.format(tf) ?: ""};$totalMinutes;$effectiveGoal;${weightedWorked-effectiveGoal};$tipo;${day.holidayName ?: ""};$details\n")
                     }
                 }
             }

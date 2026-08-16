@@ -1,13 +1,9 @@
 /*
  * Nome: WorkRepository.kt
- * Versão: 1.3.0
- * Data: 25/05/2024
- * Hora: 21:00
- * Descrição: Repositório que centraliza o acesso aos dados de WorkDay e WorkInterval.
- * 
- * Histórico de Modificações:
- * 24/05/2024 21:30 - Adicionados métodos para buscar WorkDayWithIntervals para garantir cálculos precisos.
- * 25/05/2024 21:00 - Adicionado método deleteWorkDay para permitir a exclusão completa de um dia.
+ * Versão: 1.4.0
+ * Data: 13/02/2025
+ * Hora: 19:30
+ * Descrição: Repositório atualizado com suporte a exclusão em lote de intervalos.
  */
 
 package com.example.controledeponto
@@ -49,4 +45,6 @@ class WorkRepository(
     suspend fun updateInterval(interval: WorkInterval) = intervalDao.update(interval)
 
     suspend fun deleteInterval(interval: WorkInterval) = intervalDao.delete(interval)
+
+    suspend fun deleteIntervalsByDate(date: LocalDate) = intervalDao.deleteIntervalsByDate(date)
 }
